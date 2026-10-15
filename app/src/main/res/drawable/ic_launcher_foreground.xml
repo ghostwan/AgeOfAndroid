@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Castle keep -->
+    <path android:fillColor="#FFD9C9A3" android:pathData="M34,46h40v32h-40z" />
+    <path android:fillColor="#FFD9C9A3" android:pathData="M34,40h6v6h-6zM44,40h6v6h-6zM58,40h6v6h-6zM68,40h6v6h-6z" />
+    <path android:fillColor="#FFB09A6E" android:pathData="M48,30h12v16h-12z" />
+    <path android:fillColor="#FFB09A6E" android:pathData="M48,26h3v4h-3zM53,26h2v4h-2zM57,26h3v4h-3z" />
+    <!-- Gate -->
+    <path android:fillColor="#FF4A3320" android:pathData="M48,78v-12a6,6 0,0 1,12 0v12z" />
+    <!-- Flag -->
+    <path android:fillColor="#FF5A4630" android:pathData="M53.5,14h1.5v12h-1.5z" />
+    <path android:fillColor="#FF2F6FE0" android:pathData="M55,14l10,3l-10,3z" />
+</vector>
