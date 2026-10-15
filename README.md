@@ -17,6 +17,7 @@ Un jeu de stratégie en temps réel inspiré d'**Age of Empires II**, repensé p
 - **4 civilisations** avec bonus : Francs, Bretons, Teutons, Japonais.
 - **IA** (1 à 3 adversaires, 3 niveaux) : économie, maisons, camps près des ressources, passage des âges, vagues d'attaque, défense (y compris des villageois).
 - Brouillard de guerre, mini-carte, file de production, point de ralliement, vitesse x1 à x3.
+- **Sauvegarde** : automatique quand l'application passe en arrière-plan, à la pause et en quittant la partie, plus un bouton 💾 dans le menu pause. « Continuer » sur l'écran d'accueil reprend la partie (un seul emplacement ; une partie terminée est effacée).
 - **Victoire** : détruire tous les ennemis, ou construire une Merveille et la garder 3 minutes.
 
 ## Contrôles tactiles

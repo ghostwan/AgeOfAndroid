@@ -31,6 +31,13 @@ class Resources(food: Int = 0, wood: Int = 0, gold: Int = 0, stone: Int = 0) {
 
     operator fun get(type: ResourceType): Int = amounts[type.ordinal].toInt()
 
+    /** Exact amount, including the fractions gathered so far (used by saves). */
+    fun exact(type: ResourceType): Float = amounts[type.ordinal]
+
+    fun setExact(type: ResourceType, amount: Float) {
+        amounts[type.ordinal] = amount
+    }
+
     fun add(type: ResourceType, amount: Float) {
         amounts[type.ordinal] += amount
     }

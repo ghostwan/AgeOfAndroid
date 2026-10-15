@@ -24,31 +24,56 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import com.ghostwan.ageofandroid.game.GameConfig
+import android.util.Log
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.ghostwan.ageofandroid.game.SaveGame
+import java.io.File
 import com.ghostwan.ageofandroid.game.World
 
 private enum class GestureMode { UNDECIDED, TAP, PAN, BOX }
 
 @Composable
-fun GameScreen(config: GameConfig, onQuit: () -> Unit) {
+fun GameScreen(world: World, saveFile: File?, onQuit: () -> Unit) {
     val density = LocalDensity.current.density
-    val controller = remember(config) { GameController(World(config), density) }
-    GameScreen(controller, onQuit)
+    val controller = remember(world) { GameController(world, density) }
+    GameScreen(controller, onQuit, saveFile)
+}
+
+/** Writes the game to [file], or deletes the save once the game is over. Never throws. */
+fun persistGame(world: World, file: File?): Boolean {
+    if (file == null) return false
+    return try {
+        if (world.winner != null) file.delete() else SaveGame.save(world, file)
+        true
+    } catch (e: Exception) {
+        Log.e("AgeOfAndroid", "Save failed", e)
+        false
+    }
 }
 
 @Composable
-fun GameScreen(controller: GameController, onQuit: () -> Unit) {
+fun GameScreen(controller: GameController, onQuit: () -> Unit, saveFile: File? = null) {
     var showMenu by remember { mutableStateOf(false) }
+    fun openMenu() {
+        showMenu = true
+        controller.paused = true
+        persistGame(controller.world, saveFile)
+    }
 
     BackHandler {
         when {
             controller.placing != null -> controller.cancelPlacement()
-            else -> {
-                showMenu = !showMenu
-                controller.paused = showMenu
+            showMenu -> {
+                showMenu = false
+                controller.paused = false
             }
+            else -> openMenu()
         }
     }
+
+    // Autosave whenever the app goes to the background (home button, call, screen off...).
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { persistGame(controller.world, saveFile) }
 
     LaunchedEffect(controller) {
         var last = withFrameNanos { it }
@@ -62,10 +87,7 @@ fun GameScreen(controller: GameController, onQuit: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         GameCanvas(controller)
-        Hud(controller, onMenu = {
-            showMenu = true
-            controller.paused = true
-        })
+        Hud(controller, onMenu = { openMenu() })
         if (showMenu) {
             PauseMenu(
                 controller,
@@ -73,11 +95,21 @@ fun GameScreen(controller: GameController, onQuit: () -> Unit) {
                     showMenu = false
                     controller.paused = false
                 },
-                onQuit = onQuit,
+                onSave = if (saveFile == null) null else {
+                    { persistGame(controller.world, saveFile) }
+                },
+                onQuit = {
+                    persistGame(controller.world, saveFile)
+                    onQuit()
+                },
             )
         }
         val winner = controller.hud.let { controller.world.winner }
-        winner?.let { EndDialog(controller, it, onQuit) }
+        if (winner != null) {
+            // A finished game is not worth resuming.
+            LaunchedEffect(Unit) { persistGame(controller.world, saveFile) }
+            EndDialog(controller, winner, onQuit)
+        }
     }
 }
 

@@ -9,8 +9,8 @@ import kotlin.math.max
  */
 class AiPlayer(private val world: World, val player: Player, private val difficulty: Difficulty) {
     private var thinkTimer = 0.5f + player.id * 0.13f
-    private var nextAttackTime = difficulty.firstAttack
-    private var attackWaveSize = when (difficulty) {
+    internal var nextAttackTime = difficulty.firstAttack
+    internal var attackWaveSize = when (difficulty) {
         Difficulty.EASY -> 6
         Difficulty.NORMAL -> 8
         Difficulty.HARD -> 10

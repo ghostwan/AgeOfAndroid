@@ -6,8 +6,11 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.ghostwan.ageofandroid.game.SaveGame
 import com.ghostwan.ageofandroid.game.GameConfig
 import com.ghostwan.ageofandroid.game.World
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -108,5 +111,32 @@ class ScreenshotTest {
             assertTrue(controller.selectedBuilding() === tc)
             assertTrue(villager.task.name == "IDLE")
         }
+    }
+
+    @Test
+    fun pauseMenuSavesAndMenuOffersToContinue() {
+        val saveFile = File(compose.activity.filesDir, "test_save.bin").apply { delete() }
+        compose.mainClock.autoAdvance = false
+        val controller = GameController(World(GameConfig(opponents = 2, mapSize = 56, seed = 5L)), 2f)
+        compose.setContent { GameScreen(controller, onQuit = {}, saveFile = saveFile) }
+        repeat(50) { compose.mainClock.advanceTimeBy(100) }
+        compose.onNodeWithText("☰").performClick()
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        assertTrue(saveFile.exists())
+        capture("pause_menu")
+        val loaded = SaveGame.load(saveFile)
+        assertEquals(controller.world.time, loaded.time, 0.2f)
+        assertEquals(controller.world.units.size, loaded.units.size)
+    }
+
+    @Test
+    fun menuWithSave() {
+        val world = World(GameConfig(opponents = 2, mapSize = 56, seed = 5L))
+        world.forceAdvance(125f)
+        val file = File(compose.activity.filesDir, "menu_save.bin")
+        SaveGame.save(world, file)
+        compose.setContent { MenuScreen(onStart = {}, save = SaveGame.info(file), onContinue = {}) }
+        compose.onNodeWithText("▶  Continuer").assertIsDisplayed()
+        capture("menu_continue")
     }
 }

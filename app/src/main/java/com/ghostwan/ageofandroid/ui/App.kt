@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,6 +41,10 @@ import androidx.compose.ui.unit.sp
 import com.ghostwan.ageofandroid.game.Civ
 import com.ghostwan.ageofandroid.game.Difficulty
 import com.ghostwan.ageofandroid.game.GameConfig
+import com.ghostwan.ageofandroid.game.SaveGame
+import com.ghostwan.ageofandroid.game.SaveInfo
+import com.ghostwan.ageofandroid.game.World
+import java.io.File
 
 @Composable
 fun AgeOfAndroidApp() {
@@ -58,31 +64,48 @@ private const val MAX_FONT_SCALE = 1.1f
 @Composable
 private fun AppContent() {
     MaterialTheme(colorScheme = darkColorScheme(primary = BorderGold, background = Color(0xFF1B140C))) {
-        var config by rememberSaveable(stateSaver = configSaver) { mutableStateOf<GameConfig?>(null) }
-        val current = config
+        val context = LocalContext.current
+        val saveFile = remember { File(context.filesDir, SAVE_FILE) }
+        var world by remember { mutableStateOf<World?>(null) }
+        var error by remember { mutableStateOf<String?>(null) }
+        val current = world
         if (current == null) {
-            MenuScreen(onStart = { config = it })
+            // Re-read the save summary every time we come back to the menu.
+            val info = remember(current) { SaveGame.info(saveFile) }
+            MenuScreen(
+                onStart = {
+                    error = null
+                    world = World(it)
+                },
+                save = info,
+                onContinue = {
+                    world = try {
+                        SaveGame.load(saveFile).also { error = null }
+                    } catch (e: Exception) {
+                        saveFile.delete()
+                        error = "Sauvegarde illisible, elle a été supprimée."
+                        null
+                    }
+                },
+                error = error,
+            )
         } else {
-            GameScreen(current, onQuit = { config = null })
+            GameScreen(current, saveFile, onQuit = { world = null })
         }
     }
 }
 
-private val configSaver = androidx.compose.runtime.saveable.Saver<GameConfig?, List<Any>>(
-    save = { c -> c?.let { listOf(it.civ.ordinal, it.opponents, it.difficulty.ordinal, it.mapSize, it.seed) } ?: emptyList() },
-    restore = { l ->
-        if (l.isEmpty()) {
-            null
-        } else {
-            GameConfig(Civ.entries[l[0] as Int], l[1] as Int, Difficulty.entries[l[2] as Int], l[3] as Int, l[4] as Long)
-        }
-    },
-)
+const val SAVE_FILE = "savegame.bin"
 
 private val MAP_SIZES = listOf(56 to "Petite", 72 to "Moyenne", 96 to "Grande")
 
 @Composable
-fun MenuScreen(onStart: (GameConfig) -> Unit) {
+fun MenuScreen(
+    onStart: (GameConfig) -> Unit,
+    save: SaveInfo? = null,
+    onContinue: () -> Unit = {},
+    error: String? = null,
+) {
     var civ by rememberSaveable { mutableStateOf(Civ.FRANKS) }
     var opponents by rememberSaveable { mutableStateOf(1) }
     var difficulty by rememberSaveable { mutableStateOf(Difficulty.NORMAL) }
@@ -107,7 +130,28 @@ fun MenuScreen(onStart: (GameConfig) -> Unit) {
                 )
                 Text("Bâtissez un empire, de l'Âge sombre à l'Âge impérial", color = TextDim, fontSize = 14.sp)
                 Spacer(Modifier.height(24.dp))
-                MenuButton("⚔️  Jouer") { onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis())) }
+                if (save != null) {
+                    MenuButton("▶  Continuer") { onContinue() }
+                    Text(
+                        "${save.config.civ.label} contre ${save.config.opponents} IA (${save.config.difficulty.label.lowercase()}) • " +
+                            "${formatTime(save.time)} • ${save.age.label}",
+                        color = TextDim, fontSize = 12.sp,
+                    )
+                    Text(
+                        "Sauvegardée le " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                            .format(java.util.Date(save.savedAt)),
+                        color = TextDim, fontSize = 11.sp,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                error?.let {
+                    Text(it, color = Color(0xFFFF8070), fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                }
+                MenuButton(if (save != null) "⚔️  Nouvelle partie" else "⚔️  Jouer") {
+                    onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis()))
+                }
+                if (save != null) Text("(remplacera la sauvegarde)", color = TextDim, fontSize = 11.sp)
                 Spacer(Modifier.height(12.dp))
                 MenuButton(if (showHelp) "✖  Fermer l'aide" else "📖  Comment jouer") { showHelp = !showHelp }
             }

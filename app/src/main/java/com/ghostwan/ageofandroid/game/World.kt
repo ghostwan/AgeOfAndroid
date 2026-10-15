@@ -19,7 +19,8 @@ data class GameConfig(
 
 data class GameEvent(val text: String, val x: Float = -1f, val y: Float = -1f, val alert: Boolean = false)
 
-class World(val config: GameConfig) {
+/** @param generate false when the world is about to be restored from a save (see [SaveGame]). */
+class World(val config: GameConfig, generate: Boolean = true) {
     val rnd = Random(config.seed)
     val map = GameMap(config.mapSize, config.mapSize)
     val players = ArrayList<Player>()
@@ -28,9 +29,9 @@ class World(val config: GameConfig) {
     val nodes = ArrayList<ResourceNode>()
     val projectiles = ArrayList<Projectile>()
     private val byId = HashMap<Int, Entity>()
-    private var nextId = 1
+    internal var nextId = 1
     var time = 0f
-        private set
+        internal set
 
     /** Events addressed to the human player (id 0). */
     val events = ArrayDeque<GameEvent>()
@@ -56,10 +57,33 @@ class World(val config: GameConfig) {
     private val buckets = Array(bucketsW * bucketsW) { ArrayList<GameUnit>(4) }
 
     init {
-        MapGenerator(this).generate()
+        if (generate) {
+            MapGenerator(this).generate()
+            finishSetup()
+        }
+    }
+
+    /** Creates the AIs and derived state once players and entities are in place. */
+    internal fun finishSetup() {
         players.filter { !it.isHuman }.forEach { ais += AiPlayer(this, it, config.difficulty) }
         updatePopulation()
         updateFog()
+    }
+
+    /** Re-inserts an entity read from a save, keeping its id and map occupancy. */
+    internal fun restore(e: Entity) {
+        byId[e.id] = e
+        when (e) {
+            is GameUnit -> units += e
+            is Building -> {
+                buildings += e
+                if (!e.type.walkable) map.setOccupant(e.tx, e.ty, e.size, e.id)
+            }
+            is ResourceNode -> {
+                nodes += e
+                map.setOccupant(e.tx, e.ty, 1, e.id)
+            }
+        }
     }
 
     val human: Player get() = players[0]
@@ -943,7 +967,7 @@ class World(val config: GameConfig) {
         return res
     }
 
-    private fun setDestinationPoint(u: GameUnit, x: Float, y: Float) {
+    internal fun setDestinationPoint(u: GameUnit, x: Float, y: Float) {
         var tx = floor(x).toInt().coerceIn(0, map.width - 1)
         var ty = floor(y).toInt().coerceIn(0, map.height - 1)
         var fx = x.coerceIn(0.1f, map.width - 0.1f)

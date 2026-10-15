@@ -25,7 +25,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -671,7 +674,8 @@ fun ActionButton(
 // ---------------------------------------------------------------------- Menus
 
 @Composable
-fun PauseMenu(c: GameController, onResume: () -> Unit, onQuit: () -> Unit) {
+fun PauseMenu(c: GameController, onResume: () -> Unit, onSave: (() -> Boolean)?, onQuit: () -> Unit) {
+    var saved by remember { mutableStateOf<Boolean?>(null) }
     Box(Modifier.fillMaxSize().background(Color(0xAA000000)).clickable(enabled = false) {}, contentAlignment = Alignment.Center) {
         Column(
             Modifier
@@ -684,16 +688,29 @@ fun PauseMenu(c: GameController, onResume: () -> Unit, onQuit: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("Pause", color = BorderGold, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(HELP_TEXT, color = TextCream, fontSize = 13.sp)
+            if (onSave != null) {
+                Text(
+                    when (saved) {
+                        true -> "✅ Partie sauvegardée"
+                        false -> "⚠️ Échec de la sauvegarde"
+                        null -> "La partie est sauvegardée automatiquement à la pause et en quittant l'application."
+                    },
+                    color = if (saved == false) Color(0xFFFF8070) else TextDim, fontSize = 12.sp,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MenuButton("▶ Reprendre", onResume)
-                MenuButton(if (c.world.revealAll) "🌫️ Brouillard" else "👁️ Révéler la carte") {
+                MenuButton("▶ Reprendre", Modifier.weight(1f), onResume)
+                if (onSave != null) MenuButton("💾 Sauvegarder", Modifier.weight(1f)) { saved = onSave() }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MenuButton(if (c.world.revealAll) "🌫️ Brouillard" else "👁️ Révéler la carte", Modifier.weight(1f)) {
                     c.world.revealAll = !c.world.revealAll
                     c.world.updateFog()
                     c.invalidateHud()
                 }
-                MenuButton("🚪 Quitter", onQuit)
+                MenuButton(if (onSave != null) "🚪 Sauver et quitter" else "🚪 Quitter", Modifier.weight(1f), onQuit)
             }
+            Text(HELP_TEXT, color = TextCream, fontSize = 13.sp)
         }
     }
 }
@@ -710,16 +727,17 @@ const val HELP_TEXT = """Objectif : détruisez tous les bâtiments et unités en
 • Construisez des maisons pour augmenter la population, et passez les âges au forum pour débloquer de nouvelles unités."""
 
 @Composable
-fun MenuButton(label: String, onClick: () -> Unit) {
+fun MenuButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        Modifier
+        modifier
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF5A3E1C))
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(label, color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
     }
 }
 
@@ -745,7 +763,7 @@ fun EndDialog(c: GameController, winner: Int, onQuit: () -> Unit) {
                 color = TextCream, fontSize = 13.sp,
             )
             Spacer(Modifier.height(8.dp))
-            MenuButton("Menu principal", onQuit)
+            MenuButton("Menu principal", onClick = onQuit)
         }
     }
 }
