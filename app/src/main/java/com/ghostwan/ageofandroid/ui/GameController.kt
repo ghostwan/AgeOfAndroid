@@ -88,6 +88,7 @@ class GameController(val world: World, density: Float) {
         private set
 
     var paused by mutableStateOf(false)
+    var bottomBarVisible by mutableStateOf(true)
     var speed by mutableFloatStateOf(1f)
     var placing by mutableStateOf<BuildingType?>(null)
         private set
@@ -234,8 +235,10 @@ class GameController(val world: World, density: Float) {
         val building = selectedBuilding()?.takeIf { it.owner == 0 }
         when {
             hit is GameUnit && hit.owner == 0 -> select(listOf(hit))
+            // Tapping one of our buildings selects it, unless the villagers have an obvious job there:
+            // finishing a construction or working a free farm (drop-offs happen automatically).
             units.isNotEmpty() && hit is Building && hit.owner == 0 &&
-                !(units.any { it.type == UnitType.VILLAGER } && (!hit.complete || hit.type == BuildingType.FARM || hit.type.isDropSite)) ->
+                !(units.any { it.type == UnitType.VILLAGER } && (!hit.complete || hit.type == BuildingType.FARM && !world.farmTaken(hit))) ->
                 select(listOf(hit))
             units.isNotEmpty() -> {
                 world.commandSmart(units, w.x, w.y, hit)

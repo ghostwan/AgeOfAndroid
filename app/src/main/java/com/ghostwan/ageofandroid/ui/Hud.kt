@@ -58,6 +58,7 @@ import com.ghostwan.ageofandroid.game.UnitType
 import kotlin.math.sqrt
 
 val PanelColor = Color(0xE6261A10)
+private val BOTTOM_BAR_HEIGHT = 136.dp
 val BorderGold = Color(0xFFC9A24A)
 val TextCream = Color(0xFFF3E6C4)
 val TextDim = Color(0xFFB8A784)
@@ -68,16 +69,37 @@ fun Hud(c: GameController, onMenu: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         TopBar(c, onMenu, Modifier.align(Alignment.TopCenter))
         Toasts(c, Modifier.align(Alignment.TopCenter).padding(top = 46.dp))
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(136.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            Minimap(c, Modifier.width(220.dp).fillMaxHeight())
-            Box(Modifier.weight(1f).fillMaxHeight()) {
-                if (c.placing != null) PlacementBar(c) else SelectionPanel(c)
+        // The bottom bar can be folded away to free the map; it always shows while placing a building.
+        val showBar = c.bottomBarVisible || c.placing != null
+        if (showBar) {
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(BOTTOM_BAR_HEIGHT),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Minimap(c, Modifier.width(220.dp).fillMaxHeight())
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    if (c.placing != null) PlacementBar(c) else SelectionPanel(c)
+                }
+            }
+        }
+        if (c.placing == null) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = if (showBar) BOTTOM_BAR_HEIGHT - 2.dp else 0.dp)
+                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                    .background(PanelColor)
+                    .border(1.dp, BorderGold.copy(alpha = 0.6f), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                    .clickable { c.bottomBarVisible = !c.bottomBarVisible }
+                    .padding(horizontal = 18.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    if (showBar) "▼" else "▲ ${c.selectedEntities().size.takeIf { it > 0 }?.let { "$it sélectionné(s)" } ?: "Carte et actions"}",
+                    color = TextCream, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                )
             }
         }
         c.lastError?.let {
@@ -87,7 +109,7 @@ fun Hud(c: GameController, onMenu: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 146.dp)
+                    .padding(bottom = if (c.bottomBarVisible || c.placing != null) BOTTOM_BAR_HEIGHT + 30.dp else 40.dp)
                     .background(Color(0xCC5A1010), RoundedCornerShape(8.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
@@ -167,6 +189,7 @@ fun formatTime(t: Float): String {
 
 @Composable
 private fun Toasts(c: GameController, modifier: Modifier) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         c.toasts.forEach { t ->
             Text(
@@ -195,6 +218,7 @@ private class MinimapCache(n: Int) {
 
 @Composable
 private fun Minimap(c: GameController, modifier: Modifier) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val world = c.world
     val n = world.map.width
     val cache = remember(world) { MinimapCache(n) }
@@ -371,27 +395,33 @@ private fun SelectionPanel(c: GameController) {
 
 @Composable
 private fun EntityHeader(icon: String, title: String, subtitle: String, hp: Float?, maxHp: Float?, color: Color, modifier: Modifier = Modifier) {
-    Column(modifier.width(190.dp)) {
+    Column(modifier.width(200.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).background(color, RoundedCornerShape(5.dp)))
-            Spacer(Modifier.width(6.dp))
-            Text(icon, fontSize = 24.sp)
-            Spacer(Modifier.width(6.dp))
-            Text(title, color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.size(8.dp).background(color, RoundedCornerShape(4.dp)))
+            Spacer(Modifier.width(4.dp))
+            GameIcon(icon, 20.sp)
+            Spacer(Modifier.width(4.dp))
+            Text(title, color = TextCream, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (hp != null && maxHp != null) {
-            Spacer(Modifier.height(4.dp))
-            Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0xFF3A1010), RoundedCornerShape(3.dp))) {
-                Box(Modifier.fillMaxWidth((hp / maxHp).coerceIn(0f, 1f)).fillMaxHeight().background(Color(0xFF4CC04C), RoundedCornerShape(3.dp)))
+            Spacer(Modifier.height(3.dp))
+            // Hit points are written inside the bar so they never get pushed out of the panel.
+            Box(Modifier.fillMaxWidth().height(16.dp).background(Color(0xFF3A1010), RoundedCornerShape(3.dp)), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.align(Alignment.CenterStart).fillMaxWidth((hp / maxHp).coerceIn(0f, 1f)).fillMaxHeight()
+                        .background(Color(0xFF3E9E3E), RoundedCornerShape(3.dp)),
+                )
+                Text("${hp.toInt().coerceAtLeast(0)} / ${maxHp.toInt()} PV", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
-            Text("${hp.toInt().coerceAtLeast(0)} / ${maxHp.toInt()} PV", color = TextDim, fontSize = 11.sp)
+            Spacer(Modifier.height(2.dp))
         }
-        Text(subtitle, color = TextDim, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Text(subtitle, color = TextDim, fontSize = 11.sp, lineHeight = 13.sp)
     }
 }
 
 @Composable
 private fun SingleSelection(c: GameController, e: Entity) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val world = c.world
     val ownerColor = if (e.owner >= 0) Color(world.players[e.owner].color) else Color(0xFFE0C050)
     when (e) {
@@ -412,6 +442,7 @@ private fun SingleSelection(c: GameController, e: Entity) {
                 !e.complete -> "Construction : ${(e.progress * 100).toInt()}%"
                 e.type == BuildingType.FARM -> "Nourriture restante : ${e.food.toInt()}"
                 e.type == BuildingType.WONDER && e.wonderTimer > 0f -> "Victoire dans ${formatTime(e.wonderTimer)}"
+                e.type.trains.isNotEmpty() && e.owner == 0 -> e.type.description + " Touchez la carte pour placer le point de ralliement."
                 else -> e.type.description
             }
             EntityHeader(e.type.icon, e.type.label + if (e.owner != 0) " (${p.name})" else "", subtitle, e.hp, e.maxHp, ownerColor)
@@ -452,6 +483,7 @@ private fun taskLabel(c: GameController, u: GameUnit): String {
 
 @Composable
 private fun MultiSelection(c: GameController, units: List<GameUnit>) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val groups = units.groupBy { it.type }
     Column(Modifier.width(190.dp)) {
         Text("${units.size} unités", color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -465,6 +497,7 @@ private fun MultiSelection(c: GameController, units: List<GameUnit>) {
 
 @Composable
 private fun UnitActions(c: GameController, units: List<GameUnit>) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val p = c.world.human
     val hasVillager = units.any { it.type == UnitType.VILLAGER }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -496,6 +529,7 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun BuildButton(c: GameController, t: BuildingType) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val p = c.world.human
     val locked = p.age < t.minAge
     val cost = p.buildingCost(t)
@@ -510,6 +544,7 @@ private fun BuildButton(c: GameController, t: BuildingType) {
 
 @Composable
 private fun BuildingActions(c: GameController, b: Building) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val p = c.world.human
     if (!b.complete) {
         LazyRow { item { ActionButton("🗑️", "Annuler") { c.deleteSelected() } } }
@@ -524,6 +559,7 @@ private fun BuildingActions(c: GameController, b: Building) {
                         u.icon,
                         if (locked) "🔒 ${u.label}" else u.label,
                         cost = u.cost.toString(),
+                        time = u.trainTime,
                         enabled = !locked,
                         affordable = p.res.canAfford(u.cost),
                     ) { c.train(u) }
@@ -533,7 +569,7 @@ private fun BuildingActions(c: GameController, b: Building) {
                 p.age.next?.let { next ->
                     item {
                         ActionButton(
-                            "⏫", next.label, cost = next.cost.toString(),
+                            "⏫", next.label, cost = next.cost.toString(), time = next.researchTime,
                             enabled = !p.researchingAge, affordable = p.res.canAfford(next.cost),
                         ) { c.advanceAge() }
                     }
@@ -546,6 +582,7 @@ private fun BuildingActions(c: GameController, b: Building) {
                         t.icon,
                         if (locked) "🔒 ${t.label}" else t.label,
                         cost = t.cost.toString(),
+                        time = t.time,
                         enabled = !locked && t !in p.researching,
                         affordable = p.res.canAfford(t.cost),
                     ) { c.research(t) }
@@ -555,32 +592,40 @@ private fun BuildingActions(c: GameController, b: Building) {
         }
         if (b.queue.isNotEmpty()) {
             Column(Modifier.padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("File (toucher = annuler)", color = TextDim, fontSize = 9.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                val current = b.queue.first()
+                val remaining = (current.time - b.queueProgress).coerceAtLeast(0f)
+                val housed = current.unit != null && p.pop >= p.popCap
+                Text(
+                    if (housed) "En attente : maisons !" else "${current.label} : ${remaining.toInt() + 1}s",
+                    color = if (housed) Color(0xFFFF8070) else TextCream, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                )
+                Spacer(Modifier.height(3.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
                     b.queue.forEachIndexed { i, item ->
+                        val big = i == 0
                         Box(
                             Modifier
-                                .size(36.dp)
+                                .size(if (big) 48.dp else 34.dp)
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(Color(0xFF3A2A18))
-                                .border(1.dp, BorderGold.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                .border(1.dp, BorderGold.copy(alpha = if (big) 1f else 0.6f), RoundedCornerShape(4.dp))
                                 .clickable { c.cancelQueue(i) },
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (i == 0) {
+                            if (big) {
                                 Box(
                                     Modifier
                                         .align(Alignment.BottomStart)
                                         .fillMaxWidth((b.queueProgress / item.time).coerceIn(0f, 1f))
-                                        .height(4.dp)
-                                        .background(Color(0xFF4CC04C)),
+                                        .fillMaxHeight()
+                                        .background(Color(0x664CC04C)),
                                 )
                             }
-                            Text(item.icon, fontSize = 18.sp)
+                            GameIcon(item.icon, if (big) 24.sp else 17.sp)
                         }
                     }
                 }
-                if (b.type.trains.isNotEmpty()) Text("Toucher la carte = point de ralliement", color = TextDim, fontSize = 9.sp)
+                Text("Toucher = annuler", color = TextDim, fontSize = 9.sp)
             }
         }
     }
@@ -591,6 +636,7 @@ fun ActionButton(
     icon: String,
     label: String,
     cost: String? = null,
+    time: Float? = null,
     enabled: Boolean = true,
     affordable: Boolean = true,
     onClick: () -> Unit,
@@ -607,7 +653,7 @@ fun ActionButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(icon, fontSize = 26.sp, color = if (enabled) Color.Unspecified else Color.Gray)
+        GameIcon(icon, 26.sp, dim = !enabled)
         Text(
             label, color = if (enabled) TextCream else TextDim, fontSize = 10.sp, textAlign = TextAlign.Center,
             maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 11.sp,
@@ -618,6 +664,7 @@ fun ActionButton(
                 maxLines = 2, lineHeight = 10.sp,
             )
         }
+        if (time != null) Text("⏱ ${time.toInt()}s", color = TextDim, fontSize = 9.sp, maxLines = 1)
     }
 }
 

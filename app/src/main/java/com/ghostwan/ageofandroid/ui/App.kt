@@ -19,6 +19,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,6 +42,21 @@ import com.ghostwan.ageofandroid.game.GameConfig
 
 @Composable
 fun AgeOfAndroidApp() {
+    FontScaleCap { AppContent() }
+}
+
+/** Game HUDs have a fixed layout: cap the system font scale so large fonts don't push content out. */
+@Composable
+fun FontScaleCap(content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    val capped = Density(density.density, fontScale = density.fontScale.coerceAtMost(MAX_FONT_SCALE))
+    CompositionLocalProvider(LocalDensity provides capped, content = content)
+}
+
+private const val MAX_FONT_SCALE = 1.1f
+
+@Composable
+private fun AppContent() {
     MaterialTheme(colorScheme = darkColorScheme(primary = BorderGold, background = Color(0xFF1B140C))) {
         var config by rememberSaveable(stateSaver = configSaver) { mutableStateOf<GameConfig?>(null) }
         val current = config

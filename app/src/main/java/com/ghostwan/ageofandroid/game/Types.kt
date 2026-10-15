@@ -181,8 +181,8 @@ enum class Tech(
     val researchedAt: BuildingType,
     val description: String,
 ) {
-    WHEELBARROW("Brouette", "🛒", Cost(food = 175, wood = 50), 40f, Age.FEUDAL, BuildingType.TOWN_CENTER, "Villageois +10% vitesse, +5 capacité"),
-    DOUBLE_BIT_AXE("Hache à double tranchant", "🌲", Cost(food = 100, wood = 50), 25f, Age.FEUDAL, BuildingType.LUMBER_CAMP, "Bois +20%"),
+    WHEELBARROW("Brouette", "@wheelbarrow", Cost(food = 175, wood = 50), 40f, Age.FEUDAL, BuildingType.TOWN_CENTER, "Villageois +10% vitesse, +5 capacité"),
+    DOUBLE_BIT_AXE("Hache à double tranchant", "@axe", Cost(food = 100, wood = 50), 25f, Age.FEUDAL, BuildingType.LUMBER_CAMP, "Bois +20%"),
     HORSE_COLLAR("Collier d'épaule", "🐂", Cost(food = 75, wood = 75), 20f, Age.FEUDAL, BuildingType.MILL, "Fermes +40% de nourriture"),
     GOLD_MINING("Extraction de l'or", "⛏️", Cost(food = 100, wood = 75), 30f, Age.FEUDAL, BuildingType.MINING_CAMP, "Or et pierre +15%"),
     FORGING("Forgeage", "🔨", Cost(food = 150), 30f, Age.FEUDAL, BuildingType.BLACKSMITH, "Infanterie et cavalerie +1 attaque"),
