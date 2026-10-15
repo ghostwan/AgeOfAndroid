@@ -1,11 +1,20 @@
 name: Release
 
+# Publishes the APK as a GitHub release named after versionName (app/build.gradle.kts).
+# Runs on tags, on pushes to main / claude branches (the release is updated in place until
+# versionName is bumped), or manually.
 on:
   push:
+    branches: [main, "claude/**"]
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -17,13 +26,25 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build APK
         run: |
           ./gradlew :app:testDebugUnitTest :app:assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk AgeOfAndroid-${GITHUB_REF_NAME}.apk
+          cp app/build/outputs/apk/debug/app-debug.apk AgeOfAndroid-${{ steps.version.outputs.tag }}.apk
       - uses: softprops/action-gh-release@v2
         with:
-          files: AgeOfAndroid-${{ github.ref_name }}.apk
-          generate_release_notes: true
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Age of Android ${{ steps.version.outputs.tag }}
+          files: AgeOfAndroid-${{ steps.version.outputs.tag }}.apk
           body: |
-            APK à installer directement sur un téléphone Android 8.0+ (voir le README, section « Installer sur son téléphone »).
+            APK à installer directement sur un téléphone Android 8.0+ :
+            téléchargez le fichier `.apk` ci-dessous depuis le téléphone, ouvrez-le et autorisez
+            l'installation d'applications inconnues si Android le demande.
