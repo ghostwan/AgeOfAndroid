@@ -49,6 +49,9 @@ import com.ghostwan.ageofandroid.game.GameConfig
 import com.ghostwan.ageofandroid.game.SaveGame
 import com.ghostwan.ageofandroid.game.SaveInfo
 import com.ghostwan.ageofandroid.game.World
+import com.ghostwan.ageofandroid.net.GuestSession
+import com.ghostwan.ageofandroid.net.HostSession
+import com.ghostwan.ageofandroid.net.LanDiscovery
 import java.io.File
 
 @Composable
@@ -66,36 +69,123 @@ fun FontScaleCap(content: @Composable () -> Unit) {
 
 private const val MAX_FONT_SCALE = 1.1f
 
+private sealed interface Screen {
+    data object Menu : Screen
+    data class Solo(val world: World) : Screen
+    data object MultiplayerHome : Screen
+    data class HostLobby(val session: HostSession) : Screen
+    data class GuestLobby(val session: GuestSession) : Screen
+    data class MultiplayerGame(val controller: GameController, val host: HostSession?, val guest: GuestSession?) : Screen
+}
+
 @Composable
 private fun AppContent() {
     MaterialTheme(colorScheme = darkColorScheme(primary = BorderGold, background = Color(0xFF1B140C))) {
         val context = LocalContext.current
+        val density = LocalDensity.current.density
         val saveFile = remember { File(context.filesDir, SAVE_FILE) }
-        var world by remember { mutableStateOf<World?>(null) }
+        val discovery = remember {
+            try {
+                LanDiscovery(context)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        var screen by remember { mutableStateOf<Screen>(Screen.Menu) }
         var error by remember { mutableStateOf<String?>(null) }
-        val current = world
-        if (current == null) {
-            // Re-read the save summary every time we come back to the menu.
-            val info = remember(current) { SaveGame.info(saveFile) }
-            MenuScreen(
-                onStart = {
-                    error = null
-                    world = World(it)
-                },
-                save = info,
-                onContinue = {
-                    world = try {
-                        SaveGame.load(saveFile).also { error = null }
-                    } catch (e: Exception) {
-                        saveFile.delete()
-                        error = "Sauvegarde illisible, elle a été supprimée."
-                        null
-                    }
-                },
-                error = error,
+        when (val current = screen) {
+            Screen.Menu -> {
+                // Re-read the save summary every time we come back to the menu.
+                val info = remember(current) { SaveGame.info(saveFile) }
+                MenuScreen(
+                    onStart = {
+                        error = null
+                        screen = Screen.Solo(World(it))
+                    },
+                    save = info,
+                    onContinue = {
+                        try {
+                            screen = Screen.Solo(SaveGame.load(saveFile))
+                            error = null
+                        } catch (e: Exception) {
+                            saveFile.delete()
+                            error = "Sauvegarde illisible, elle a été supprimée."
+                        }
+                    },
+                    onMultiplayer = { screen = Screen.MultiplayerHome },
+                    error = error,
+                )
+            }
+            is Screen.Solo -> GameScreen(current.world, saveFile, onQuit = { screen = Screen.Menu })
+            Screen.MultiplayerHome -> MultiplayerScreen(
+                discovery,
+                onBack = { screen = Screen.Menu },
+                onHosted = { screen = Screen.HostLobby(it) },
+                onJoined = { screen = Screen.GuestLobby(it) },
             )
-        } else {
-            GameScreen(current, saveFile, onQuit = { world = null })
+            is Screen.HostLobby -> HostLobbyScreen(
+                current.session, discovery,
+                onStart = {
+                    val world = current.session.start()
+                    val controller = GameController(world, density).apply {
+                        multiplayer = true
+                        netHook = current.session
+                    }
+                    screen = Screen.MultiplayerGame(controller, current.session, null)
+                },
+                onCancel = {
+                    current.session.close()
+                    screen = Screen.MultiplayerHome
+                },
+            )
+            is Screen.GuestLobby -> GuestLobbyScreen(
+                current.session,
+                onPlaying = {
+                    val session = current.session
+                    val controller = GameController(session.world!!, density).apply {
+                        multiplayer = true
+                        simulate = false
+                        netHook = session
+                        sendCommand = { session.send(it) }
+                    }
+                    screen = Screen.MultiplayerGame(controller, null, session)
+                },
+                onLeave = {
+                    current.session.close()
+                    screen = Screen.MultiplayerHome
+                },
+            )
+            is Screen.MultiplayerGame -> MultiplayerGameScreen(current.controller, current.guest) {
+                current.host?.close()
+                current.guest?.close()
+                screen = Screen.Menu
+            }
+        }
+    }
+}
+
+/** A multiplayer game, plus a notice when the host disappears. */
+@Composable
+private fun MultiplayerGameScreen(controller: GameController, guest: GuestSession?, onQuit: () -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        GameScreen(controller, onQuit)
+        val closed = controller.hud.let { guest?.state == GuestSession.State.CLOSED }
+        if (closed && controller.world.winner == null) {
+            Box(Modifier.fillMaxSize().background(Color(0xBB000000)).clickable(enabled = false) {}, contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier
+                        .width(420.dp)
+                        .background(PanelColor, RoundedCornerShape(12.dp))
+                        .border(2.dp, BorderGold, RoundedCornerShape(12.dp))
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Partie interrompue", color = BorderGold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text(guest?.closeReason ?: "", color = TextCream)
+                    MenuButton("Menu principal", onClick = onQuit)
+                }
+            }
         }
     }
 }
@@ -110,6 +200,7 @@ fun MenuScreen(
     onStart: (GameConfig) -> Unit,
     save: SaveInfo? = null,
     onContinue: () -> Unit = {},
+    onMultiplayer: () -> Unit = {},
     error: String? = null,
 ) {
     var civ by rememberSaveable { mutableStateOf(Civ.FRANKS) }
@@ -163,6 +254,7 @@ fun MenuScreen(
                     MenuButton(if (save != null) "⚔️  Nouvelle partie" else "⚔️  Jouer") {
                         onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis()))
                     }
+                    MenuButton("👥  Multijoueur", onClick = onMultiplayer)
                     MenuButton(if (showHelp) "✖  Fermer l'aide" else "📖  Comment jouer") { showHelp = !showHelp }
                 }
                 if (save != null) Text("(Nouvelle partie remplacera la sauvegarde)", color = TextDim, fontSize = 11.sp)
@@ -209,7 +301,7 @@ fun MenuScreen(
 }
 
 @Composable
-private fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier
             .clip(RoundedCornerShape(8.dp))

@@ -36,6 +36,22 @@ Un jeu de stratégie en temps réel inspiré d'**Age of Empires II**, repensé p
 | 💤👷 / ⚔️ / 🏛️ | Villageois inactif suivant / toute l'armée / forum |
 | ▼ / ▲ | Replier / déplier la barre du bas (mini-carte et actions) |
 
+## Multijoueur (Wi-Fi local)
+
+Menu › **👥 Multijoueur**, sur des téléphones connectés au même réseau Wi-Fi :
+
+1. Un joueur choisit son nom et sa civilisation puis **Créer une partie**. Il règle le mode, la taille de la carte, ajoute des IA si besoin, puis **Lancer la partie**.
+2. Les autres ouvrent Multijoueur : la partie apparaît dans **Rejoindre une partie**. Si le réseau bloque la découverte, saisissez l'adresse IP affichée chez l'hôte.
+
+Modes (jusqu'à 4 places, joueurs et IA) :
+
+- **Coopération** : tous les joueurs dans la même équipe (vision partagée, bases voisines) contre une ou plusieurs IA.
+- **Chacun pour soi** : 1 contre 1, 1 contre 1 contre 1… avec des IA en plus si on veut.
+
+Règles : pas de pause ni d'accélération, pas de sauvegarde ni de révélation de la carte. Si un invité quitte la partie, une IA prend sa place. Si l'hôte quitte ou met l'application en arrière-plan, la partie s'arrête (ou se fige) pour tout le monde.
+
+Fonctionnement : l'hôte fait tourner la seule vraie simulation. Les invités lui envoient leurs ordres (`Command`) et reçoivent 10 fois par seconde un instantané compressé de la partie (`Snapshot`), entre lesquels le mouvement des unités est interpolé. Le transport (`net/Link`) est indépendant du réseau : TCP en local aujourd'hui, un relais Internet (WebSocket) pourra le remplacer sans toucher au reste.
+
 ## Installer sur son téléphone
 
 1. Ouvrez la page [Releases](https://github.com/ghostwan/AgeOfAndroid/releases) depuis le téléphone et téléchargez `AgeOfAndroid-vX.Y.Z.apk`.
@@ -62,5 +78,6 @@ git tag v0.1.0 && git push origin v0.1.0
 
 Architecture :
 
-- `game/` : moteur pur Kotlin, testable sur la JVM. `World` (simulation, ordres, combat, brouillard), `GameMap` (grille + A*), `MapGenerator`, `AiPlayer`, `Types` (données d'équilibrage).
+- `game/` : moteur pur Kotlin, testable sur la JVM. `World` (simulation, ordres, combat, brouillard), `GameMap` (grille + A*), `MapGenerator`, `AiPlayer`, `Types` (données d'équilibrage), `Command` (ordres des joueurs), `Snapshot` (synchronisation multijoueur).
+- `net/` : multijoueur. `Link`/`TcpLink` (transport), `Protocol` (messages, salon), `Sessions` (`HostSession`, `GuestSession`), `LanDiscovery` (recherche des parties en mDNS).
 - `ui/` : Compose. `GameController` (caméra, sélection, entrées), `GameRenderer` (rendu isométrique sur Canvas : terrain et brouillard en textures pivotées à 45°), `Hud`, `GameScreen` (boucle `withFrameNanos` + gestes), `App` (menu).

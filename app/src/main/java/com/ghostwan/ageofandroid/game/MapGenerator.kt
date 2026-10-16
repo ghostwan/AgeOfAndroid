@@ -13,12 +13,28 @@ class MapGenerator(private val world: World) {
 
     fun generate() {
         val slots = world.config.slots
-        val starts = startPositions(if (slots.isNotEmpty()) slots.size else world.config.opponents + 1)
+        val starts = if (slots.any { a -> slots.count { it.team == a.team } > 1 }) {
+            teamStartPositions(slots.map { it.team })
+        } else {
+            startPositions(if (slots.isNotEmpty()) slots.size else world.config.opponents + 1)
+        }
         createPlayers(starts)
         paintTerrain(starts)
         starts.forEachIndexed { i, (sx, sy) -> setupBase(i, sx, sy) }
         scatterForests(starts)
         scatterMines(starts)
+    }
+
+    /** Allies get neighbouring corners: corners are walked around the map, team by team. */
+    private fun teamStartPositions(teams: List<Int>): List<Pair<Int, Int>> {
+        val m = 11
+        val far = size - 1 - m
+        val ring = listOf(Pair(m, m), Pair(far, m), Pair(far, far), Pair(m, far))
+        val offset = rnd.nextInt(ring.size)
+        val order = teams.indices.sortedBy { teams[it] }
+        val result = arrayOfNulls<Pair<Int, Int>>(teams.size)
+        order.forEachIndexed { k, player -> result[player] = ring[(offset + k) % ring.size] }
+        return result.map { it!! }
     }
 
     private fun startPositions(n: Int): List<Pair<Int, Int>> {

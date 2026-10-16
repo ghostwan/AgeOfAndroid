@@ -30,6 +30,26 @@ class TeamsTest {
     }
 
     @Test
+    fun alliesStartOnNeighbouringCorners() {
+        repeat(5) { seed ->
+            val w = World(
+                GameConfig(
+                    mapSize = 56, seed = seed.toLong(),
+                    slots = listOf(
+                        PlayerSlot("A", Civ.FRANKS, true, 0),
+                        PlayerSlot("IA", Civ.FRANKS, false, 1),
+                        PlayerSlot("B", Civ.FRANKS, true, 0),
+                    ),
+                ),
+            )
+            val a = w.players[0]
+            val b = w.players[2]
+            // Same side of the map: they share one coordinate.
+            assertTrue(a.startX == b.startX || a.startY == b.startY)
+        }
+    }
+
+    @Test
     fun alliesAreNotEnemies() {
         val w = coop()
         assertFalse(w.isEnemy(0, 1))

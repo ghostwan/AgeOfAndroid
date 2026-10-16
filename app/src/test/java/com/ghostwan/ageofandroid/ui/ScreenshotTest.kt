@@ -3,6 +3,7 @@ package com.ghostwan.ageofandroid.ui
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
@@ -230,5 +231,67 @@ class ScreenshotTest {
         compose.runOnUiThread { controller.onTap(10f, controller.viewH / 2f) }
         assertEquals(false, controller.selectMode)
         assertEquals(1, controller.selectedUnits().size)
+    }
+
+    @Test
+    fun multiplayerScreens() {
+        compose.setContent { MultiplayerScreen(discovery = null, onBack = {}, onHosted = {}, onJoined = {}) }
+        compose.onNodeWithText("Créer une partie", substring = true).assertExists()
+        capture("mp_home")
+
+        val host = com.ghostwan.ageofandroid.net.HostSession("Erwan", com.ghostwan.ageofandroid.game.Civ.FRANKS, port = 0)
+        val guest = com.ghostwan.ageofandroid.net.GuestSession(
+            com.ghostwan.ageofandroid.net.TcpLink.connect("127.0.0.1", host.port), "Pixel", com.ghostwan.ageofandroid.game.Civ.BRITONS,
+        )
+        try {
+            val end = System.currentTimeMillis() + 5000
+            while (host.lobby.seats.size < 2 || guest.lobby == null) {
+                check(System.currentTimeMillis() < end)
+                host.poll()
+                guest.poll()
+                Thread.sleep(10)
+            }
+            host.addAi()
+            host.setMode(com.ghostwan.ageofandroid.net.GameMode.COOP)
+            var started = false
+            compose.runOnUiThread { compose.activity.setContent { FontScaleCap { HostLobbyScreen(host, null, onStart = { started = true }, onCancel = {}) } } }
+            compose.waitForIdle()
+            compose.onNodeWithText("Pixel", substring = true).assertExists()
+            capture("mp_host_lobby")
+            compose.onNodeWithText("Lancer la partie", substring = true).performClick()
+            assertTrue(started)
+
+            while (guest.lobby?.seats?.size != 3) {
+                host.poll()
+                guest.poll()
+                Thread.sleep(10)
+            }
+            compose.runOnUiThread { compose.activity.setContent { FontScaleCap { GuestLobbyScreen(guest, onPlaying = {}, onLeave = {}) } } }
+            compose.waitForIdle()
+            compose.onNodeWithText("En attente", substring = true).assertExists()
+            capture("mp_guest_lobby")
+
+            // Guest in game.
+            host.start(seed = 3L)
+            while (guest.state != com.ghostwan.ageofandroid.net.GuestSession.State.PLAYING) {
+                host.poll()
+                guest.poll()
+                Thread.sleep(10)
+            }
+            val controller = GameController(guest.world!!, 2f).apply {
+                multiplayer = true
+                simulate = false
+                netHook = guest
+                sendCommand = { guest.send(it) }
+            }
+            compose.mainClock.autoAdvance = false
+            compose.runOnUiThread { compose.activity.setContent { FontScaleCap { GameScreen(controller, onQuit = {}) } } }
+            repeat(10) { compose.mainClock.advanceTimeBy(100) }
+            capture("mp_guest_game")
+            assertEquals(1, controller.me)
+        } finally {
+            guest.close()
+            host.close()
+        }
     }
 }

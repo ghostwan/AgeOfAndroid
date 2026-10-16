@@ -57,7 +57,8 @@ fun GameScreen(controller: GameController, onQuit: () -> Unit, saveFile: File? =
     var showMenu by remember { mutableStateOf(false) }
     fun openMenu() {
         showMenu = true
-        controller.paused = true
+        // A multiplayer game goes on while one player looks at the menu.
+        if (!controller.multiplayer) controller.paused = true
         persistGame(controller.world, saveFile)
     }
 

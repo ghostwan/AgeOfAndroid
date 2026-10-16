@@ -204,7 +204,7 @@ private fun TopBar(c: GameController, onMenu: () -> Unit, modifier: Modifier) {
         }
         HudButton("⚔️${c.armyCount()}") { c.selectArmy() }
         HudButton("🏛️") { c.selectTownCenter() }
-        HudButton("x${if (c.speed % 1f == 0f) c.speed.toInt().toString() else c.speed.toString()}") {
+        if (!c.multiplayer) HudButton("x${if (c.speed % 1f == 0f) c.speed.toInt().toString() else c.speed.toString()}") {
             c.speed = when (c.speed) {
                 1f -> 1.5f
                 1.5f -> 2f
@@ -863,7 +863,8 @@ fun PauseMenu(c: GameController, onResume: () -> Unit, onSave: (() -> Boolean)?,
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Pause", color = BorderGold, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(if (c.multiplayer) "Menu" else "Pause", color = BorderGold, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            if (c.multiplayer) Text("Partie multijoueur : le jeu continue pendant ce menu.", color = TextDim, fontSize = 12.sp)
             if (onSave != null) {
                 Text(
                     when (saved) {
@@ -879,12 +880,22 @@ fun PauseMenu(c: GameController, onResume: () -> Unit, onSave: (() -> Boolean)?,
                 if (onSave != null) MenuButton("💾 Sauvegarder", Modifier.weight(1f)) { saved = onSave() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MenuButton(if (c.world.revealAll) "🌫️ Brouillard" else "👁️ Révéler la carte", Modifier.weight(1f)) {
-                    c.world.revealAll = !c.world.revealAll
-                    c.world.updateFog()
-                    c.invalidateHud()
+                // Revealing the map would be cheating against other players.
+                if (!c.multiplayer) {
+                    MenuButton(if (c.world.revealAll) "🌫️ Brouillard" else "👁️ Révéler la carte", Modifier.weight(1f)) {
+                        c.world.revealAll = !c.world.revealAll
+                        c.world.updateFog()
+                        c.invalidateHud()
+                    }
                 }
-                MenuButton(if (onSave != null) "🚪 Sauver et quitter" else "🚪 Quitter", Modifier.weight(1f), onQuit)
+                MenuButton(
+                    when {
+                        c.multiplayer -> "🚪 Quitter la partie"
+                        onSave != null -> "🚪 Sauver et quitter"
+                        else -> "🚪 Quitter"
+                    },
+                    Modifier.weight(1f), onQuit,
+                )
             }
             Text(HELP_TEXT, color = TextCream, fontSize = 13.sp)
         }
