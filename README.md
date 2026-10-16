@@ -46,7 +46,7 @@ Toutes les builds (CI et locales) sont signées avec la même clé, `app/debug.k
 
 ## Publier une release
 
-Le workflow `.github/workflows/release.yml` (tag `v*`, push sur `master`/`claude/**`, ou lancement manuel) lance les tests, construit l'APK et publie la release `v<versionName>` avec l'APK attaché. Incrémentez `versionName` dans `app/build.gradle.kts` pour une nouvelle release.
+Le workflow `.github/workflows/release.yml` (tag `v*`, push sur `master`/`claude/**`, ou lancement manuel) lance les tests, construit l'APK release et publie la release `v<versionName>` avec l'APK attaché. Incrémentez `versionName` dans `app/build.gradle.kts` pour une nouvelle release.
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
@@ -57,6 +57,7 @@ git tag v0.1.0 && git push origin v0.1.0
 ```bash
 ./gradlew :app:testDebugUnitTest   # moteur (JVM) + captures d'écran Robolectric dans app/build/screenshots
 ./gradlew :app:assembleDebug       # app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleRelease     # APK publié (non debuggable, plus fluide) : app/build/outputs/apk/release/app-release.apk
 ```
 
 Architecture :

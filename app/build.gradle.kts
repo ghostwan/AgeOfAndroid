@@ -12,8 +12,8 @@ android {
         applicationId = "com.ghostwan.ageofandroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.3.7"
+        versionCode = 11
+        versionName = "0.3.8"
     }
 
     signingConfigs {
@@ -29,8 +29,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Published APKs are release builds: a debuggable app runs Compose and the game loop
+            // noticeably slower. Same key as debug builds, so updates install over each other.
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
         }
     }
     compileOptions {

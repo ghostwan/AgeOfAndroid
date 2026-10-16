@@ -49,6 +49,10 @@ class GameMap(val width: Int, val height: Int) {
     private val closedStamp = IntArray(width * height)
     private var generation = 0
 
+    /** Number of tiles expanded by the last [findPath] call (used to budget searches per tick). */
+    var lastExpanded = 0
+        private set
+
     /**
      * A* on the tile grid (8 directions, no corner cutting).
      * [isGoal] decides whether a tile is acceptable, the heuristic aims at ([gx], [gy]).
@@ -63,6 +67,7 @@ class GameMap(val width: Int, val height: Int) {
         maxNodes: Int = 6000,
         isGoal: (Int, Int) -> Boolean,
     ): List<Pair<Int, Int>> {
+        lastExpanded = 0
         if (!inBounds(sx, sy)) return emptyList()
         if (isGoal(sx, sy)) return emptyList()
         generation++
@@ -110,6 +115,7 @@ class GameMap(val width: Int, val height: Int) {
                 }
             }
         }
+        lastExpanded = expanded
         val end = if (found >= 0) found else best
         if (end == start) return emptyList()
         val result = ArrayList<Pair<Int, Int>>()
@@ -130,7 +136,9 @@ class GameMap(val width: Int, val height: Int) {
         var fromY = sy
         var i = 0
         while (i < path.size) {
-            var j = path.size - 1
+            // Look a bounded number of waypoints ahead: trying every remaining one made smoothing
+            // quadratic in the path length, the main cost of long paths.
+            var j = min(path.size - 1, i + SMOOTH_LOOKAHEAD)
             while (j > i && !lineWalkable(fromX, fromY, path[j].first + 0.5f, path[j].second + 0.5f)) j--
             out.add(path[j])
             fromX = path[j].first + 0.5f
@@ -185,6 +193,7 @@ class GameMap(val width: Int, val height: Int) {
     }
 
     companion object {
+        private const val SMOOTH_LOOKAHEAD = 12
         private val DIRS = arrayOf(
             intArrayOf(1, 0), intArrayOf(-1, 0), intArrayOf(0, 1), intArrayOf(0, -1),
             intArrayOf(1, 1), intArrayOf(1, -1), intArrayOf(-1, 1), intArrayOf(-1, -1),

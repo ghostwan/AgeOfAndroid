@@ -51,10 +51,20 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     val ais = ArrayList<AiPlayer>()
 
+    /**
+     * Tiles A* may still expand during this tick. Big fights used to trigger dozens of full searches
+     * in the same tick (visible freezes on phones); units over budget simply wait for the next tick.
+     */
+    private var pathBudget = PATH_BUDGET
+
     // Spatial buckets for unit separation.
-    private val bucketSize = 2
+    // One tile per bucket: units only push each other within ~0.6 tile, and bigger buckets made
+    // packed armies compare every unit with dozens of far-away ones.
+    private val bucketSize = 1
     private val bucketsW = (map.width + bucketSize - 1) / bucketSize
     private val buckets = Array(bucketsW * bucketsW) { ArrayList<GameUnit>(4) }
+    private val usedBuckets = IntArray(bucketsW * bucketsW)
+    private var usedBucketCount = 0
 
     init {
         if (generate) {
@@ -397,6 +407,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
         if (winner != null) return
         val dt = min(dtRaw, 0.1f)
         time += dt
+        pathBudget = PATH_BUDGET
 
         for (i in 0 until units.size) {
             val u = units[i]
@@ -981,6 +992,11 @@ class World(val config: GameConfig, generate: Boolean = true) {
         }
         u.destX = fx
         u.destY = fy
+        if (map.lineWalkable(u.x, u.y, fx, fy)) {
+            u.path = listOf(Waypoint(fx, fy))
+            u.pathIndex = 0
+            return
+        }
         val sx = floor(u.x).toInt()
         val sy = floor(u.y).toInt()
         val tiles = map.findPath(sx, sy, tx + 0.5f, ty + 0.5f) { cx, cy -> cx == tx && cy == ty }
@@ -1005,11 +1021,22 @@ class World(val config: GameConfig, generate: Boolean = true) {
                 u.repathTimer -= dt
                 return
             }
+            // Nothing in the way: walk straight there, no search needed (the common case in fights).
+            val (ax, ay) = approachPoint(target, u.x, u.y, reach)
+            if (dist(u.x, u.y, ax, ay) < DIRECT_RANGE && map.lineWalkable(u.x, u.y, ax, ay)) {
+                u.path = listOf(Waypoint(ax, ay))
+                u.pathIndex = 0
+                u.repathTimer = 0.5f
+                followPath(u, dt)
+                return
+            }
+            if (pathBudget <= 0) return // try again next tick
             val sx = floor(u.x).toInt()
             val sy = floor(u.y).toInt()
-            val tiles = map.findPath(sx, sy, target.x, target.y) { cx, cy ->
+            val tiles = map.findPath(sx, sy, target.x, target.y, maxNodes = min(MAX_PATH_NODES, pathBudget)) { cx, cy ->
                 target.distanceTo(cx + 0.5f, cy + 0.5f) <= reach
             }
+            pathBudget -= map.lastExpanded
             if (tiles.isEmpty()) {
                 if (target.distanceTo(sx + 0.5f, sy + 0.5f) <= reach + 0.5f) {
                     // Already on a goal tile: step straight toward the target.
@@ -1026,6 +1053,22 @@ class World(val config: GameConfig, generate: Boolean = true) {
             u.repathTimer = 0.5f
         }
         followPath(u, dt)
+    }
+
+    /** A point within [reach] of [target], on the side facing (ux, uy). */
+    private fun approachPoint(target: Entity, ux: Float, uy: Float, reach: Float): Pair<Float, Float> {
+        val (cx, cy) = when (target) {
+            is Building -> Pair(
+                ux.coerceIn(target.tx.toFloat(), (target.tx + target.size).toFloat()),
+                uy.coerceIn(target.ty.toFloat(), (target.ty + target.size).toFloat()),
+            )
+            is ResourceNode -> Pair(ux.coerceIn(target.tx.toFloat(), target.tx + 1f), uy.coerceIn(target.ty.toFloat(), target.ty + 1f))
+            else -> Pair(target.x, target.y)
+        }
+        val d = dist(ux, uy, cx, cy)
+        if (d < 0.001f) return Pair(cx, cy)
+        val back = min(reach * 0.7f, d)
+        return Pair(cx + (ux - cx) / d * back, cy + (uy - cy) / d * back)
     }
 
     private fun stepTowards(u: GameUnit, x: Float, y: Float, dt: Float, stopAt: Float, target: Entity) {
@@ -1072,12 +1115,15 @@ class World(val config: GameConfig, generate: Boolean = true) {
     }
 
     private fun separateUnits(dt: Float) {
-        buckets.forEach { it.clear() }
+        for (k in 0 until usedBucketCount) buckets[usedBuckets[k]].clear()
+        usedBucketCount = 0
         for (u in units) {
             if (!u.alive) continue
             val bx = (u.x / bucketSize).toInt().coerceIn(0, bucketsW - 1)
             val by = (u.y / bucketSize).toInt().coerceIn(0, bucketsW - 1)
-            buckets[by * bucketsW + bx] += u
+            val b = buckets[by * bucketsW + bx]
+            if (b.isEmpty()) usedBuckets[usedBucketCount++] = by * bucketsW + bx
+            b += u
         }
         for (u in units) {
             if (!u.alive) continue
@@ -1210,6 +1256,9 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     companion object {
         const val MAX_QUEUE = 5
+        const val MAX_PATH_NODES = 6000
+        const val PATH_BUDGET = 4000
+        const val DIRECT_RANGE = 14f
         const val BUILDING_PIERCE_ARMOR = 6
         const val WONDER_TIME = 180f
 

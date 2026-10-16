@@ -36,8 +36,8 @@ jobs:
           fi
       - name: Build APK
         run: |
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk AgeOfAndroid-${{ steps.version.outputs.tag }}.apk
+          ./gradlew :app:testDebugUnitTest :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk AgeOfAndroid-${{ steps.version.outputs.tag }}.apk
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
