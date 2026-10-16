@@ -38,7 +38,7 @@ Un jeu de stratégie en temps réel inspiré d'**Age of Empires II**, repensé p
 2. Ouvrez le fichier : Android demande d'autoriser l'installation depuis le navigateur ou le gestionnaire de fichiers (*Installer des applis inconnues*). Acceptez.
 3. Ou depuis un ordinateur : `adb install AgeOfAndroid-vX.Y.Z.apk`.
 
-L'APK est signé avec une clé de debug : si vous installez une version compilée sur une autre machine, désinstallez d'abord la précédente.
+Toutes les builds (CI et locales) sont signées avec la même clé, `app/debug.keystore`, versionnée dans le dépôt : une nouvelle version s'installe par-dessus la précédente et garde la sauvegarde. Cette clé est publique, elle ne convient pas pour une publication sur le Play Store. Les versions antérieures à 0.3.2 utilisaient une clé aléatoire : il faut les désinstaller une dernière fois.
 
 ## Publier une release
 

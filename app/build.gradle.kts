@@ -12,8 +12,19 @@ android {
         applicationId = "com.ghostwan.ageofandroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.3.2"
+    }
+
+    signingConfigs {
+        // Shared debug key committed to the repo: every build (local or CI) gets the same
+        // signature, so a new APK installs over the previous one instead of requiring an uninstall.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
