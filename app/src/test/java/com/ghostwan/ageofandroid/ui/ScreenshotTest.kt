@@ -94,6 +94,12 @@ class ScreenshotTest {
         repeat(3) { compose.mainClock.advanceTimeBy(100) }
         compose.onNodeWithText("▲", substring = true).assertIsDisplayed()
         capture("small_phone_bar_hidden")
+        compose.runOnUiThread {
+            controller.bottomBarVisible = true
+            controller.select(listOf(controller.world.units.first { it.owner == 0 && it.type.name == "VILLAGER" }))
+        }
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        capture("small_phone_villager")
     }
 
     @Test

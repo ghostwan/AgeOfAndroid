@@ -40,7 +40,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -62,6 +65,16 @@ import kotlin.math.sqrt
 
 val PanelColor = Color(0xE6261A10)
 private val BOTTOM_BAR_HEIGHT = 136.dp
+
+/** Space between the selection details and the action buttons. */
+private val PANEL_GAP = 12.dp
+
+/** Text centred on its line box, without Android's extra font padding (for text inside bars). */
+private val CenteredLineStyle = TextStyle(
+    lineHeight = 11.sp,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+)
 val BorderGold = Color(0xFFC9A24A)
 val TextCream = Color(0xFFF3E6C4)
 val TextDim = Color(0xFFB8A784)
@@ -398,7 +411,10 @@ private fun SelectionPanel(c: GameController) {
 
 @Composable
 private fun EntityHeader(icon: String, title: String, subtitle: String, hp: Float?, maxHp: Float?, color: Color, modifier: Modifier = Modifier) {
-    Column(modifier.width(200.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
+    Column(
+        modifier.width(200.dp + PANEL_GAP).padding(end = PANEL_GAP).fillMaxHeight().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).background(color, RoundedCornerShape(4.dp)))
             Spacer(Modifier.width(4.dp))
@@ -414,7 +430,13 @@ private fun EntityHeader(icon: String, title: String, subtitle: String, hp: Floa
                     Modifier.align(Alignment.CenterStart).fillMaxWidth((hp / maxHp).coerceIn(0f, 1f)).fillMaxHeight()
                         .background(Color(0xFF3E9E3E), RoundedCornerShape(3.dp)),
                 )
-                Text("${hp.toInt().coerceAtLeast(0)} / ${maxHp.toInt()} PV", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                androidx.compose.material3.Text(
+                    "${hp.toInt().coerceAtLeast(0)} / ${maxHp.toInt()} PV",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    style = CenteredLineStyle,
+                )
             }
             Spacer(Modifier.height(2.dp))
         }
@@ -488,7 +510,7 @@ private fun taskLabel(c: GameController, u: GameUnit): String {
 private fun MultiSelection(c: GameController, units: List<GameUnit>) {
     c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val groups = units.groupBy { it.type }
-    Column(Modifier.width(190.dp)) {
+    Column(Modifier.width(190.dp + PANEL_GAP).padding(end = PANEL_GAP)) {
         Text("${units.size} unités", color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp)
         Text(groups.entries.joinToString("  ") { "${it.key.icon}×${it.value.size}" }, color = TextCream, fontSize = 15.sp)
         val hp = units.sumOf { it.hp.toDouble() }
