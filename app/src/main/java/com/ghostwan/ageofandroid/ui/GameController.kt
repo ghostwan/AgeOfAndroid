@@ -12,14 +12,18 @@ import androidx.compose.ui.geometry.Rect
 import com.ghostwan.ageofandroid.game.Age
 import com.ghostwan.ageofandroid.game.Building
 import com.ghostwan.ageofandroid.game.BuildingType
+import com.ghostwan.ageofandroid.game.Command
 import com.ghostwan.ageofandroid.game.Cost
 import com.ghostwan.ageofandroid.game.Entity
 import com.ghostwan.ageofandroid.game.GameUnit
 import com.ghostwan.ageofandroid.game.ResourceNode
+import com.ghostwan.ageofandroid.game.ResourceType
 import com.ghostwan.ageofandroid.game.Task
 import com.ghostwan.ageofandroid.game.Tech
 import com.ghostwan.ageofandroid.game.UnitType
 import com.ghostwan.ageofandroid.game.World
+import com.ghostwan.ageofandroid.net.NetHook
+import com.ghostwan.ageofandroid.game.apply
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -110,6 +114,21 @@ class GameController(val world: World, density: Float) {
     val markers = ArrayList<Marker>()
     /** The local player. */
     val me get() = world.viewer
+
+    /**
+     * Where player orders go. Solo and multiplayer host: applied to the local world right away.
+     * Multiplayer guest: sent to the host (see the net package).
+     */
+    var sendCommand: (Command) -> Unit = { cmd -> world.apply(cmd)?.let { showError(it) } }
+
+    /** False on a multiplayer guest: the host runs the simulation. */
+    var simulate = true
+
+    /** Speed and pause are disabled in multiplayer. */
+    var multiplayer = false
+
+    /** Multiplayer session plugged into the game loop. */
+    var netHook: NetHook? = null
     private var lastEventSeq = world.lastEventSeq
 
     private val selection = LinkedHashSet<Int>()
@@ -128,7 +147,8 @@ class GameController(val world: World, density: Float) {
 
     fun tick(dtRaw: Float) {
         val dt = min(dtRaw, 0.1f)
-        if (!paused && world.winner == null) {
+        netHook?.beforeTick(dt)
+        if (simulate && !paused && world.winner == null) {
             var remaining = dt * speed
             while (remaining > 0f) {
                 val step = min(remaining, 0.05f)
@@ -136,6 +156,7 @@ class GameController(val world: World, density: Float) {
                 remaining -= step
             }
         }
+        netHook?.afterTick(dt)
         markers.forEach { it.life -= dt }
         markers.removeAll { it.life <= 0f }
         for (e in world.eventsFor(me, lastEventSeq)) {
@@ -277,13 +298,13 @@ class GameController(val world: World, density: Float) {
                 !(units.any { it.type == UnitType.VILLAGER } && (!hit.complete || hit.type == BuildingType.FARM && !world.farmTaken(hit))) ->
                 select(listOf(hit))
             units.isNotEmpty() -> {
-                world.commandSmart(units, w.x, w.y, hit)
+                sendCommand(Command.Smart(me, units.map { it.id }, w.x, w.y, hit?.id ?: -1))
                 val attack = hit != null && world.isEnemy(me, hit.owner)
                 markers += Marker(hit?.x ?: w.x, hit?.y ?: w.y, attack)
                 invalidateHud()
             }
             building != null && building.complete && building.type.trains.isNotEmpty() && (hit == null || hit is ResourceNode) -> {
-                world.setRally(building, w.x, w.y)
+                sendCommand(Command.Rally(me, building.id, w.x, w.y))
                 markers += Marker(w.x, w.y, false)
                 invalidateHud()
             }
@@ -338,18 +359,26 @@ class GameController(val world: World, density: Float) {
         invalidateHud()
     }
 
-    fun ghostValid(): Boolean = placing?.let { world.canPlaceFor(0, it, ghostTx, ghostTy) } ?: false
+    fun ghostValid(): Boolean = placing?.let { world.canPlaceFor(me, it, ghostTx, ghostTy) } ?: false
 
     fun confirmPlacement(keepPlacing: Boolean = false) {
         val type = placing ?: return
-        val builders = selectedUnits().filter { it.type == UnitType.VILLAGER }
-        val b = world.placeBuilding(0, type, ghostTx, ghostTy, builders)
-        if (b == null) {
-            showError(if (!world.human.res.canAfford(world.human.buildingCost(type))) "Ressources insuffisantes" else "Emplacement invalide")
+        val p = world.human
+        val cost = p.buildingCost(type)
+        if (!p.res.canAfford(cost)) {
+            showError("Ressources insuffisantes")
             return
         }
-        markers += Marker(b.x, b.y, false)
-        if (!keepPlacing || !world.human.res.canAfford(world.human.buildingCost(type))) placing = null
+        if (!ghostValid()) {
+            showError("Emplacement invalide")
+            return
+        }
+        val builders = selectedUnits().filter { it.type == UnitType.VILLAGER }
+        sendCommand(Command.Place(me, type, ghostTx, ghostTy, builders.map { it.id }))
+        markers += Marker(ghostTx + type.size / 2f, ghostTy + type.size / 2f, false)
+        // Resources of a guest only update with the next snapshot: count this building's cost already.
+        val canAffordAnother = ResourceType.entries.all { p.res[it] - (if (simulate) 0 else cost[it]) >= cost[it] }
+        if (!keepPlacing || !canAffordAnother) placing = null
         invalidateHud()
     }
 
@@ -360,8 +389,8 @@ class GameController(val world: World, density: Float) {
 
     // ------------------------------------------------------------------ Orders from the panel
 
-    private fun handle(result: World.QueueResult) {
-        if (result is World.QueueResult.Error) showError(result.reason)
+    private fun order(cmd: Command) {
+        sendCommand(cmd)
         invalidateHud()
     }
 
@@ -378,14 +407,14 @@ class GameController(val world: World, density: Float) {
         val b = selectedBuilding() ?: return
         if (explainIfBlocked(type, type.minAge, type.cost)) return
         info = null
-        handle(world.train(b, type))
+        order(Command.Train(me, b.id, type))
     }
 
     fun research(tech: Tech) {
         val b = selectedBuilding() ?: return
         if (explainIfBlocked(tech, tech.minAge, tech.cost)) return
         info = null
-        handle(world.research(b, tech))
+        order(Command.Research(me, b.id, tech))
     }
 
     fun advanceAge() {
@@ -393,22 +422,20 @@ class GameController(val world: World, density: Float) {
         val next = world.human.age.next ?: return
         if (explainIfBlocked(next, Age.DARK, next.cost)) return
         info = null
-        handle(world.advanceAge(b))
+        order(Command.AgeUp(me, b.id))
     }
 
     fun cancelQueue(index: Int) {
         val b = selectedBuilding() ?: return
-        world.cancelQueue(b, index)
-        invalidateHud()
+        order(Command.CancelQueue(me, b.id, index))
     }
 
     fun stop() {
-        world.commandStop(selectedUnits())
-        invalidateHud()
+        order(Command.Stop(me, selectedUnits().map { it.id }))
     }
 
     fun deleteSelected() {
-        selectedEntities().filter { it.owner == me }.forEach { world.deleteEntity(it) }
+        sendCommand(Command.Delete(me, selectedEntities().filter { it.owner == me }.map { it.id }))
         clearSelection()
     }
 
@@ -419,7 +446,7 @@ class GameController(val world: World, density: Float) {
             if (u.task != Task.GATHER && u.task != Task.RETURN) return@forEach
             val t = when (val target = world.entity(u.targetId)) {
                 is ResourceNode -> target.kind.resource
-                is Building -> if (target.type == BuildingType.FARM) com.ghostwan.ageofandroid.game.ResourceType.FOOD else u.carryType
+                is Building -> if (target.type == BuildingType.FARM) ResourceType.FOOD else u.carryType
                 else -> u.carryType
             } ?: return@forEach
             counts[t.ordinal]++

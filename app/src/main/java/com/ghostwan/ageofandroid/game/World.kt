@@ -62,7 +62,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     /** Winning team once the game is over (-1 if nobody), null while it runs. */
     var winner: Int? = null
-        private set
+        internal set
 
     /** The player this device plays: fog of war, events and controls are from their point of view. */
     var viewer = 0
@@ -125,6 +125,25 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     /** The local player (see [viewer]). */
     val human: Player get() = players[viewer]
+
+    /** Removes an entity for good (multiplayer guests mirror the host's world). */
+    internal fun forget(e: Entity) {
+        e.alive = false
+        byId.remove(e.id)
+    }
+
+    /** Recomputes which tiles buildings and resources block (multiplayer guests). */
+    internal fun rebuildOccupancy() {
+        java.util.Arrays.fill(map.occupant, -1)
+        for (n in nodes) if (n.alive) map.setOccupant(n.tx, n.ty, 1, n.id)
+        for (b in buildings) if (b.alive && !b.type.walkable) map.setOccupant(b.tx, b.ty, b.size, b.id)
+    }
+
+    /** An AI takes over [player]'s seat (a multiplayer guest left). */
+    fun handOverToAi(player: Player) {
+        player.isHuman = false
+        if (ais.none { it.player === player }) ais += AiPlayer(this, player, config.difficulty)
+    }
 
     fun hasWon(playerId: Int) = winner != null && winner == players[playerId].team
 

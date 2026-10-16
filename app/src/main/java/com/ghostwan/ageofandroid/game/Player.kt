@@ -5,7 +5,8 @@ class Player(
     val name: String,
     val color: Long,
     val civ: Civ,
-    val isHuman: Boolean,
+    /** Var: when a guest leaves a multiplayer game, an AI takes over their seat. */
+    var isHuman: Boolean,
     startX: Int,
     startY: Int,
     /** Players of the same team are allies: shared vision, no fighting. */
