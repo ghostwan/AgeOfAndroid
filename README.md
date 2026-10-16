@@ -42,7 +42,7 @@ L'APK est signé avec une clé de debug : si vous installez une version compilé
 
 ## Publier une release
 
-Le workflow `.github/workflows/release.yml` (tag `v*`, push sur `main`/`claude/**`, ou lancement manuel) lance les tests, construit l'APK et publie la release `v<versionName>` avec l'APK attaché. Incrémentez `versionName` dans `app/build.gradle.kts` pour une nouvelle release.
+Le workflow `.github/workflows/release.yml` (tag `v*`, push sur `master`/`claude/**`, ou lancement manuel) lance les tests, construit l'APK et publie la release `v<versionName>` avec l'APK attaché. Incrémentez `versionName` dans `app/build.gradle.kts` pour une nouvelle release.
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0

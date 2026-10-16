@@ -1,11 +1,11 @@
 name: Release
 
 # Publishes the APK as a GitHub release named after versionName (app/build.gradle.kts).
-# Runs on tags, on pushes to main / claude branches (the release is updated in place until
+# Runs on tags, on pushes to master / claude branches (the release is updated in place until
 # versionName is bumped), or manually.
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [master, main, "claude/**"]
     tags: ["v*"]
   workflow_dispatch:
 
