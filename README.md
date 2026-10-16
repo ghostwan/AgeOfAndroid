@@ -26,6 +26,8 @@ Un jeu de stratégie en temps réel inspiré d'**Age of Empires II**, repensé p
 |---|---|
 | Toucher | Sélectionner une unité / un bâtiment |
 | Appui long + glisser | Sélection de groupe (les militaires sont privilégiés) |
+| Bouton ⬚ (barre du haut) | Mode groupe : glisser un doigt encadre directement (les cadres s'additionnent), toucher une unité l'ajoute ou la retire, toucher la destination donne l'ordre et quitte le mode |
+| Double-tap sur une unité | Sélectionne toutes vos unités de ce type visibles à l'écran |
 | Glisser / pincer | Déplacer la caméra / zoomer |
 | Unités sélectionnées + toucher la carte | Ordre contextuel : déplacer, récolter, construire, attaquer (toucher un de vos bâtiments le sélectionne, sauf chantier ou ferme libre) |
 | Bouton de construction | Affiche à quoi sert le bâtiment (unités, améliorations, temps, PV) ; s'il est verrouillé ou trop cher, une fiche indique ce qui manque |

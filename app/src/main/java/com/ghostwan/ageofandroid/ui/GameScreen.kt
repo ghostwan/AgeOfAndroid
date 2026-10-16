@@ -123,6 +123,9 @@ private fun GameCanvas(controller: GameController) {
             .pointerInput(controller) {
                 val slop = viewConfiguration.touchSlop
                 val longPress = viewConfiguration.longPressTimeoutMillis
+                val doubleTapTimeout = viewConfiguration.doubleTapTimeoutMillis
+                var lastTapTime = 0L
+                var lastTapAt = Offset.Zero
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     var mode = GestureMode.UNDECIDED
@@ -137,16 +140,30 @@ private fun GameCanvas(controller: GameController) {
                                 tapAt = ch.position
                                 return@withTimeoutOrNull GestureMode.TAP
                             }
-                            if ((ch.position - down.position).getDistance() > slop) return@withTimeoutOrNull GestureMode.PAN
+                            if ((ch.position - down.position).getDistance() > slop) {
+                                // Group mode: one finger draws the selection box, two fingers move the map.
+                                return@withTimeoutOrNull if (controller.selectMode) GestureMode.BOX else GestureMode.PAN
+                            }
                         }
                         @Suppress("UNREACHABLE_CODE")
                         GestureMode.UNDECIDED
                     }
                     mode = decided ?: GestureMode.BOX
                     when (mode) {
-                        GestureMode.TAP -> tapAt?.let { controller.onTap(it.x, it.y) }
+                        GestureMode.TAP -> tapAt?.let {
+                            val now = System.currentTimeMillis()
+                            val double = now - lastTapTime < doubleTapTimeout && (it - lastTapAt).getDistance() < slop * 3
+                            if (double) {
+                                controller.onDoubleTap(it.x, it.y)
+                                lastTapTime = 0L
+                            } else {
+                                controller.onTap(it.x, it.y)
+                                lastTapTime = now
+                                lastTapAt = it
+                            }
+                        }
                         GestureMode.BOX -> {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (!controller.selectMode) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             val start = down.position
                             controller.box = Rect(start, start)
                             var end = start

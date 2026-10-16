@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -87,7 +88,7 @@ fun Hud(c: GameController, onMenu: () -> Unit) {
     c.hud // recompose on HUD ticks
     Box(Modifier.fillMaxSize()) {
         TopBar(c, onMenu, Modifier.align(Alignment.TopCenter))
-        Toasts(c, Modifier.align(Alignment.TopCenter).padding(top = 46.dp))
+        Toasts(c, Modifier.align(Alignment.TopCenter).padding(top = if (c.selectMode) 100.dp else 46.dp))
         // The bottom bar can be folded away to free the map; it always shows while placing a building.
         val showBar = c.bottomBarVisible || c.placing != null
         if (showBar) {
@@ -129,6 +130,20 @@ fun Hud(c: GameController, onMenu: () -> Unit) {
                     .padding(bottom = BOTTOM_BAR_HEIGHT + 8.dp, start = 16.dp, end = 16.dp),
             )
         }
+        if (c.selectMode) {
+            Text(
+                "Mode groupe : glissez un doigt pour encadrer, touchez une unité pour l'ajouter ou la retirer, " +
+                    "puis touchez la destination. Deux doigts pour déplacer la carte.",
+                color = TextCream, fontSize = 12.sp, textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 50.dp, start = 24.dp, end = 24.dp)
+                    .widthIn(max = 620.dp)
+                    .background(Color(0xD0304A70), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0xFF7FA8E0), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
         c.lastError?.let {
             Text(
                 it,
@@ -159,24 +174,35 @@ private fun TopBar(c: GameController, onMenu: () -> Unit, modifier: Modifier) {
             .border(1.dp, BorderGold.copy(alpha = 0.5f))
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        ResourceType.entries.forEach { t ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.icon, fontSize = 16.sp)
-                Spacer(Modifier.width(3.dp))
-                Text("${p.res[t]}", color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(" (${counts[t.ordinal]})", color = TextDim, fontSize = 11.sp)
+        // Buttons always keep their room (the menu must stay reachable); the info part gets the rest.
+        Row(
+            Modifier.weight(1f).clipToBounds(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ResourceType.entries.forEach { t ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(t.icon, fontSize = 16.sp)
+                    Spacer(Modifier.width(3.dp))
+                    Text("${p.res[t]}", color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
+                    Text(" (${counts[t.ordinal]})", color = TextDim, fontSize = 11.sp, maxLines = 1)
+                }
             }
+            val housed = p.pop >= p.popCap
+            Text("👥 ${p.pop}/${p.popCap}", color = if (housed) Color(0xFFFF8070) else TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
+            Text(formatTime(c.world.time), color = TextDim, fontSize = 13.sp, maxLines = 1)
+            val shortAge = p.age.label.removePrefix("Âge ").removePrefix("des ").replaceFirstChar { it.uppercase() }
+            Text(shortAge + if (p.researchingAge) " ⏳" else "", color = BorderGold, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
-        val housed = p.pop >= p.popCap
-        Text("👥 ${p.pop}/${p.popCap}", color = if (housed) Color(0xFFFF8070) else TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Text(p.age.label + if (p.researchingAge) " ⏳" else "", color = BorderGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.weight(1f))
-        Text(formatTime(c.world.time), color = TextDim, fontSize = 13.sp)
         val idle = c.idleVillagerCount()
-        HudButton("💤👷 $idle", highlight = idle > 0) { c.selectIdleVillager() }
-        HudButton("⚔️ ${c.armyCount()}") { c.selectArmy() }
+        HudButton("💤👷$idle", highlight = idle > 0) { c.selectIdleVillager() }
+        HudButton("⬚", highlight = c.selectMode) {
+            c.selectMode = !c.selectMode
+            c.info = null
+        }
+        HudButton("⚔️${c.armyCount()}") { c.selectArmy() }
         HudButton("🏛️") { c.selectTownCenter() }
         HudButton("x${if (c.speed % 1f == 0f) c.speed.toInt().toString() else c.speed.toString()}") {
             c.speed = when (c.speed) {
@@ -195,12 +221,12 @@ private fun HudButton(label: String, highlight: Boolean = false, onClick: () -> 
     Box(
         Modifier
             .height(32.dp)
-            .widthIn(min = 38.dp)
+            .widthIn(min = 36.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(if (highlight) Color(0xFF6A4A1A) else Color(0xFF3A2A18))
             .border(1.dp, BorderGold.copy(alpha = if (highlight) 1f else 0.5f), RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = TextCream, fontSize = 13.sp, fontWeight = FontWeight.Bold)

@@ -109,6 +109,12 @@ class GameController(val world: World, density: Float) {
     val toasts = mutableStateListOf<Toast>()
     val markers = ArrayList<Marker>()
     private val selection = LinkedHashSet<Int>()
+
+    /**
+     * Group selection mode: one finger draws a selection box right away (no long press) and tapping
+     * a unit adds it to / removes it from the selection. Ends on the next order given on the map.
+     */
+    var selectMode by mutableStateOf(false)
     private var hudTimer = 0f
     private var toastId = 0L
     private var errorTimer = 0f
@@ -241,6 +247,19 @@ class GameController(val world: World, density: Float) {
             return
         }
         val hit = renderer.hitTest(px, py)
+        if (selectMode) {
+            if (hit is GameUnit && hit.owner == 0) {
+                if (!selection.remove(hit.id)) {
+                    // Units only: drop a selected building when starting a group.
+                    selection.removeAll { world.entity(it) !is GameUnit }
+                    selection += hit.id
+                }
+                invalidateHud()
+                return
+            }
+            // Anything else is the order for the group: leave the mode and handle the tap normally.
+            selectMode = false
+        }
         val units = selectedUnits()
         val building = selectedBuilding()?.takeIf { it.owner == 0 }
         when {
@@ -273,8 +292,22 @@ class GameController(val world: World, density: Float) {
         if (inBox.isNotEmpty()) {
             // Like on PC, prefer military units when mixed with villagers.
             val military = inBox.filter { it.type.isMilitary }
-            select(if (military.isNotEmpty() && military.size != inBox.size) military else inBox)
+            val picked = if (military.isNotEmpty() && military.size != inBox.size) military else inBox
+            // In group mode boxes add up, so several groups can be gathered before giving the order.
+            select(if (selectMode) selectedUnits() + picked else picked)
         }
+    }
+
+    /** Double tap on one of our units: selects every unit of that type visible on screen. */
+    fun onDoubleTap(px: Float, py: Float) {
+        if (placing != null) return
+        val hit = renderer.hitTest(px, py) as? GameUnit ?: return
+        if (hit.owner != 0) return
+        val sameType = world.units.filter { u ->
+            u.alive && u.owner == 0 && u.type == hit.type &&
+                camera.sx(u.x, u.y) in 0f..viewW && camera.sy(u.x, u.y) in 0f..viewH
+        }
+        select(if (selectMode) selectedUnits() + sameType else sameType)
     }
 
     // ------------------------------------------------------------------ Building placement

@@ -188,4 +188,46 @@ class ScreenshotTest {
         repeat(3) { compose.mainClock.advanceTimeBy(100) }
         capture("age_info_feudal")
     }
+
+    @Test
+    fun groupSelection() {
+        compose.mainClock.autoAdvance = false
+        val controller = GameController(World(GameConfig(opponents = 1, mapSize = 56, seed = 7L)), 2f)
+        compose.setContent { GameScreen(controller, onQuit = {}) }
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        val villagers = controller.world.units.filter { it.owner == 0 && it.type.name == "VILLAGER" }
+        val cam = controller.camera
+        fun tapPoint(u: com.ghostwan.ageofandroid.game.GameUnit) = Pair(cam.sx(u.x, u.y), cam.sy(u.x, u.y) - cam.tw * 0.25f)
+
+        // Double tap on a villager selects every villager on screen.
+        compose.runOnUiThread {
+            val (x, y) = tapPoint(villagers[0])
+            controller.onDoubleTap(x, y)
+        }
+        assertEquals(villagers.size, controller.selectedUnits().size)
+
+        // Group mode: taps toggle units in and out of the selection.
+        compose.runOnUiThread {
+            controller.clearSelection()
+            controller.selectMode = true
+            val (x0, y0) = tapPoint(villagers[0])
+            controller.onTap(x0, y0)
+            val (x1, y1) = tapPoint(villagers[1])
+            controller.onTap(x1, y1)
+        }
+        assertEquals(2, controller.selectedUnits().size)
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        compose.onNodeWithText("Mode groupe", substring = true).assertExists()
+        capture("group_mode")
+        compose.runOnUiThread {
+            val (x1, y1) = tapPoint(villagers[1])
+            controller.onTap(x1, y1)
+        }
+        assertEquals(1, controller.selectedUnits().size)
+
+        // Tapping the ground gives the order and leaves the mode.
+        compose.runOnUiThread { controller.onTap(10f, controller.viewH / 2f) }
+        assertEquals(false, controller.selectMode)
+        assertEquals(1, controller.selectedUnits().size)
+    }
 }
