@@ -9,6 +9,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -99,6 +104,7 @@ const val SAVE_FILE = "savegame.bin"
 
 private val MAP_SIZES = listOf(56 to "Petite", 72 to "Moyenne", 96 to "Grande")
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MenuScreen(
     onStart: (GameConfig) -> Unit,
@@ -119,7 +125,9 @@ fun MenuScreen(
     ) {
         MenuBackdrop()
         Row(Modifier.fillMaxSize().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Scrollable so nothing gets cut on short screens or with large fonts; the Box keeps it centred.
+            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            Column(Modifier.verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("AGE OF", color = TextCream, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                 androidx.compose.material3.Text(
                     "ANDROID",
@@ -148,16 +156,23 @@ fun MenuScreen(
                     Text(it, color = Color(0xFFFF8070), fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
                 }
-                MenuButton(if (save != null) "⚔️  Nouvelle partie" else "⚔️  Jouer") {
-                    onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis()))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MenuButton(if (save != null) "⚔️  Nouvelle partie" else "⚔️  Jouer") {
+                        onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis()))
+                    }
+                    MenuButton(if (showHelp) "✖  Fermer l'aide" else "📖  Comment jouer") { showHelp = !showHelp }
                 }
-                if (save != null) Text("(remplacera la sauvegarde)", color = TextDim, fontSize = 11.sp)
-                Spacer(Modifier.height(12.dp))
-                MenuButton(if (showHelp) "✖  Fermer l'aide" else "📖  Comment jouer") { showHelp = !showHelp }
+                if (save != null) Text("(Nouvelle partie remplacera la sauvegarde)", color = TextDim, fontSize = 11.sp)
             }
+            }
+            Spacer(Modifier.width(16.dp))
             Column(
                 Modifier
-                    .width(420.dp)
+                    .fillMaxWidth(0.5f)
+                    .widthIn(max = 420.dp)
                     .background(PanelColor, RoundedCornerShape(12.dp))
                     .border(2.dp, BorderGold, RoundedCornerShape(12.dp))
                     .padding(16.dp)

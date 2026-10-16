@@ -7,6 +7,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.getBoundsInRoot
 import com.ghostwan.ageofandroid.game.SaveGame
 import com.ghostwan.ageofandroid.game.GameConfig
 import com.ghostwan.ageofandroid.game.World
@@ -144,5 +146,18 @@ class ScreenshotTest {
         compose.setContent { MenuScreen(onStart = {}, save = SaveGame.info(file), onContinue = {}) }
         compose.onNodeWithText("▶  Continuer").assertIsDisplayed()
         capture("menu_continue")
+    }
+
+    @Test
+    @Config(qualifiers = "w780dp-h360dp-land-xhdpi", fontScale = 1.3f)
+    fun menuWithSaveSmallPhone() {
+        val world = World(GameConfig(opponents = 1, mapSize = 56, seed = 5L))
+        val file = File(compose.activity.filesDir, "menu_save_small.bin")
+        SaveGame.save(world, file)
+        compose.setContent { FontScaleCap { MenuScreen(onStart = {}, save = SaveGame.info(file), onContinue = {}) } }
+        val screen = compose.onRoot().getBoundsInRoot()
+        val help = compose.onNodeWithText("📖  Comment jouer").getBoundsInRoot()
+        assertTrue("help button cut: $help in $screen", help.bottom <= screen.bottom)
+        capture("menu_continue_small")
     }
 }
