@@ -168,7 +168,7 @@ class GameRenderer(private val c: GameController) {
             }
             if (e is ResourceNode && c.isSelected(e.id)) drawFootprint(e.tx, e.ty, 1, Color.White, 2f)
         }
-        c.selectedBuilding()?.takeIf { it.owner == 0 && it.rallyX >= 0f }?.let { drawRally(it) }
+        c.selectedBuilding()?.takeIf { it.owner == c.me && it.rallyX >= 0f }?.let { drawRally(it) }
         for (m in c.markers) {
             val r = cam.tw * 0.3f * (m.life / 0.6f + 0.3f)
             drawOval(
@@ -330,8 +330,9 @@ class GameRenderer(private val c: GameController) {
         val h = max(3f, cam.tw / 18f)
         drawRect(Color(0xCC000000), topLeft = Offset(sx - 1, sy - 1), size = Size(w + 2, h + 2))
         val col = when {
-            owner == 0 -> Color(0xFF4CD04C)
+            owner == c.me -> Color(0xFF4CD04C)
             owner < 0 -> Color(0xFFE0C050)
+            world.isAlly(owner, c.me) -> Color(0xFF4CA8E8)
             else -> Color(0xFFE04040)
         }
         drawRect(col, topLeft = Offset(sx, sy), size = Size(w * ratio.coerceIn(0f, 1f), h))

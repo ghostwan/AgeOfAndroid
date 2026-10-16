@@ -327,7 +327,7 @@ class AiPlayer(private val world: World, val player: Player, private val difficu
 
     private fun attack(army: List<GameUnit>) {
         if (army.isEmpty()) return
-        val enemies = world.players.filter { !it.defeated && it.id != player.id }
+        val enemies = world.players.filter { !it.defeated && it.team != player.team }
         if (enemies.isEmpty()) return
         // Focus the human a bit more often so the player gets action.
         val victim = enemies.firstOrNull { it.isHuman && world.rnd.nextFloat() < 0.6f } ?: enemies[world.rnd.nextInt(enemies.size)]
@@ -343,7 +343,7 @@ class AiPlayer(private val world: World, val player: Player, private val difficu
             ?: targets.minByOrNull { it.distanceTo(ax, ay) }
             ?: world.units.filter { it.alive && it.owner == victim.id }.minByOrNull { dist(it.x, it.y, ax, ay) }
             ?: return
-        if (player.id != 0 && target.owner == 0) world.pushEvent("Une armée ennemie approche !", ax, ay, alert = true)
+        world.pushEvent("Une armée ennemie approche !", ax, ay, alert = true, to = target.owner)
         // Rams go for buildings, the rest move in and auto-acquire on the way via attack orders.
         world.commandAttack(army, target)
     }

@@ -501,8 +501,8 @@ private fun SingleSelection(c: GameController, e: Entity) {
                 if (r > 0f) append("  🎯${r.toInt()}")
                 append("\n").append(taskLabel(c, e))
             }
-            EntityHeader(e.type.icon, e.type.label + if (e.owner != 0) " (${p.name})" else "", stats, e.hp, e.maxHp, ownerColor)
-            if (e.owner == 0) UnitActions(c, listOf(e))
+            EntityHeader(e.type.icon, e.type.label + if (e.owner != c.me) " (${p.name})" else "", stats, e.hp, e.maxHp, ownerColor)
+            if (e.owner == c.me) UnitActions(c, listOf(e))
         }
         is Building -> {
             val p = world.players[e.owner]
@@ -510,11 +510,11 @@ private fun SingleSelection(c: GameController, e: Entity) {
                 !e.complete -> "Construction : ${(e.progress * 100).toInt()}%"
                 e.type == BuildingType.FARM -> "Nourriture restante : ${e.food.toInt()}"
                 e.type == BuildingType.WONDER && e.wonderTimer > 0f -> "Victoire dans ${formatTime(e.wonderTimer)}"
-                e.type.trains.isNotEmpty() && e.owner == 0 -> e.type.description + " Touchez la carte pour placer le point de ralliement."
+                e.type.trains.isNotEmpty() && e.owner == c.me -> e.type.description + " Touchez la carte pour placer le point de ralliement."
                 else -> e.type.description
             }
-            EntityHeader(e.type.icon, e.type.label + if (e.owner != 0) " (${p.name})" else "", subtitle, e.hp, e.maxHp, ownerColor)
-            if (e.owner == 0) BuildingActions(c, e)
+            EntityHeader(e.type.icon, e.type.label + if (e.owner != c.me) " (${p.name})" else "", subtitle, e.hp, e.maxHp, ownerColor)
+            if (e.owner == c.me) BuildingActions(c, e)
         }
         is ResourceNode -> {
             EntityHeader(
@@ -560,7 +560,7 @@ private fun MultiSelection(c: GameController, units: List<GameUnit>) {
         val max = units.sumOf { it.maxHp.toDouble() }
         Text("PV : ${(hp / max * 100).toInt()}%", color = TextDim, fontSize = 12.sp)
     }
-    UnitActions(c, units.filter { it.owner == 0 })
+    UnitActions(c, units.filter { it.owner == c.me })
 }
 
 @Composable
@@ -920,7 +920,7 @@ fun MenuButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit
 @Composable
 fun EndDialog(c: GameController, winner: Int, onQuit: () -> Unit) {
     val p = c.world.human
-    val won = winner == 0
+    val won = c.world.hasWon(c.me)
     Box(Modifier.fillMaxSize().background(Color(0xBB000000)).clickable(enabled = false) {}, contentAlignment = Alignment.Center) {
         Column(
             Modifier

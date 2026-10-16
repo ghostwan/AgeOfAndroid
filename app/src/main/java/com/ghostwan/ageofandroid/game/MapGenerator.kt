@@ -12,7 +12,8 @@ class MapGenerator(private val world: World) {
     private val size = map.width
 
     fun generate() {
-        val starts = startPositions(world.config.opponents + 1)
+        val slots = world.config.slots
+        val starts = startPositions(if (slots.isNotEmpty()) slots.size else world.config.opponents + 1)
         createPlayers(starts)
         paintTerrain(starts)
         starts.forEachIndexed { i, (sx, sy) -> setupBase(i, sx, sy) }
@@ -32,6 +33,14 @@ class MapGenerator(private val world: World) {
 
     private fun createPlayers(starts: List<Pair<Int, Int>>) {
         val civs = Civ.entries
+        val slots = world.config.slots
+        if (slots.isNotEmpty()) {
+            starts.forEachIndexed { i, (sx, sy) ->
+                val s = slots[i]
+                world.addPlayer(Player(i, s.name, Player.COLORS[i], s.civ, s.human, sx, sy, s.team))
+            }
+            return
+        }
         starts.forEachIndexed { i, (sx, sy) ->
             val human = i == 0
             val civ = if (human) world.config.civ else civs[rnd.nextInt(civs.size)]

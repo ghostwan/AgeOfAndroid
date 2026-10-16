@@ -16,7 +16,7 @@ data class SaveInfo(val config: GameConfig, val time: Float, val age: Age, val s
  */
 object SaveGame {
     private const val MAGIC = 0x414F4153 // "AOAS"
-    private const val VERSION = 1
+    private const val VERSION = 2 // 2: player teams and viewer
 
     fun save(world: World, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -58,6 +58,7 @@ object SaveGame {
 
         d.writeInt(world.nextId)
         d.writeBoolean(world.revealAll)
+        d.writeInt(world.viewer)
 
         // Map
         val map = world.map
@@ -76,6 +77,7 @@ object SaveGame {
             d.writeBoolean(p.isHuman)
             d.writeInt(p.startX)
             d.writeInt(p.startY)
+            d.writeInt(p.team)
             ResourceType.entries.forEach { d.writeFloat(p.res.exact(it)) }
             d.writeInt(p.age.ordinal)
             d.writeInt(p.techs.size)
@@ -173,13 +175,14 @@ object SaveGame {
 
     fun read(input: InputStream): World {
         val d = DataInputStream(input)
-        readHeader(d)
+        val version = readHeader(d)
         val config = readConfig(d)
         val world = World(config, generate = false)
         world.time = d.readFloat()
         d.readInt() // human age, header only
         world.nextId = d.readInt()
         world.revealAll = d.readBoolean()
+        if (version >= 2) world.viewer = d.readInt()
 
         val map = world.map
         for (i in map.terrain.indices) {
@@ -193,7 +196,10 @@ object SaveGame {
             val color = d.readLong()
             val civ = Civ.entries[d.readInt()]
             val human = d.readBoolean()
-            val p = Player(id, name, color, civ, human, d.readInt(), d.readInt())
+            val sx = d.readInt()
+            val sy = d.readInt()
+            val team = if (version >= 2) d.readInt() else id
+            val p = Player(id, name, color, civ, human, sx, sy, team)
             ResourceType.entries.forEach { p.res.setExact(it, d.readFloat()) }
             p.age = Age.entries[d.readInt()]
             repeat(d.readInt()) { p.techs += Tech.entries[d.readInt()] }
@@ -275,10 +281,11 @@ object SaveGame {
         return world
     }
 
-    private fun readHeader(d: DataInputStream) {
+    private fun readHeader(d: DataInputStream): Int {
         if (d.readInt() != MAGIC) throw IOException("Not a save file")
         val version = d.readInt()
-        if (version != VERSION) throw IOException("Unsupported save version $version")
+        if (version !in 1..VERSION) throw IOException("Unsupported save version $version")
+        return version
     }
 
     private fun readConfig(d: DataInputStream) = GameConfig(

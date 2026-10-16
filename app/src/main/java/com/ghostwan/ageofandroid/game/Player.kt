@@ -8,6 +8,8 @@ class Player(
     val isHuman: Boolean,
     startX: Int,
     startY: Int,
+    /** Players of the same team are allies: shared vision, no fighting. */
+    val team: Int = id,
 ) {
     val res = Resources(food = 200, wood = 200, gold = 100, stone = 200)
     var age = Age.DARK

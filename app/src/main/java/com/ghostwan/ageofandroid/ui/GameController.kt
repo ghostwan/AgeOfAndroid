@@ -108,6 +108,10 @@ class GameController(val world: World, density: Float) {
     var info by mutableStateOf<Any?>(null)
     val toasts = mutableStateListOf<Toast>()
     val markers = ArrayList<Marker>()
+    /** The local player. */
+    val me get() = world.viewer
+    private var lastEventSeq = world.lastEventSeq
+
     private val selection = LinkedHashSet<Int>()
 
     /**
@@ -134,11 +138,11 @@ class GameController(val world: World, density: Float) {
         }
         markers.forEach { it.life -= dt }
         markers.removeAll { it.life <= 0f }
-        while (world.events.isNotEmpty()) {
-            val e = world.events.removeFirst()
+        for (e in world.eventsFor(me, lastEventSeq)) {
             toasts += Toast(toastId++, e.text, e.alert, e.x, e.y, world.time)
             while (toasts.size > 4) toasts.removeAt(0)
         }
+        lastEventSeq = world.lastEventSeq
         toasts.removeAll { world.time - it.createdAt > 6f || it.createdAt > world.time }
         if (errorTimer > 0f) {
             errorTimer -= dt
@@ -194,7 +198,7 @@ class GameController(val world: World, density: Float) {
 
     fun selectedEntities(): List<Entity> = selection.mapNotNull { world.entity(it) }
 
-    fun selectedUnits(): List<GameUnit> = selectedEntities().filterIsInstance<GameUnit>().filter { it.owner == 0 }
+    fun selectedUnits(): List<GameUnit> = selectedEntities().filterIsInstance<GameUnit>().filter { it.owner == me }
 
     fun selectedBuilding(): Building? = selectedEntities().singleOrNull() as? Building
 
@@ -213,7 +217,7 @@ class GameController(val world: World, density: Float) {
     }
 
     fun selectIdleVillager() {
-        val idle = world.units.filter { it.alive && it.owner == 0 && it.type == UnitType.VILLAGER && it.task == Task.IDLE }
+        val idle = world.units.filter { it.alive && it.owner == me && it.type == UnitType.VILLAGER && it.task == Task.IDLE }
         if (idle.isEmpty()) return
         val current = selectedUnits().singleOrNull()
         val idx = if (current != null) (idle.indexOf(current) + 1) % idle.size else 0
@@ -223,21 +227,21 @@ class GameController(val world: World, density: Float) {
     }
 
     fun selectArmy() {
-        val army = world.units.filter { it.alive && it.owner == 0 && it.type.isMilitary }
+        val army = world.units.filter { it.alive && it.owner == me && it.type.isMilitary }
         if (army.isEmpty()) return
         select(army)
         jumpTo(army.map { it.x }.average().toFloat(), army.map { it.y }.average().toFloat())
     }
 
     fun selectTownCenter() {
-        val tc = world.buildings.firstOrNull { it.alive && it.owner == 0 && it.type == BuildingType.TOWN_CENTER } ?: return
+        val tc = world.buildings.firstOrNull { it.alive && it.owner == me && it.type == BuildingType.TOWN_CENTER } ?: return
         select(listOf(tc))
         jumpTo(tc.x, tc.y)
     }
 
-    fun idleVillagerCount() = world.units.count { it.alive && it.owner == 0 && it.type == UnitType.VILLAGER && it.task == Task.IDLE }
+    fun idleVillagerCount() = world.units.count { it.alive && it.owner == me && it.type == UnitType.VILLAGER && it.task == Task.IDLE }
 
-    fun armyCount() = world.units.count { it.alive && it.owner == 0 && it.type.isMilitary }
+    fun armyCount() = world.units.count { it.alive && it.owner == me && it.type.isMilitary }
 
     // ------------------------------------------------------------------ Input
 
@@ -250,7 +254,7 @@ class GameController(val world: World, density: Float) {
         }
         val hit = renderer.hitTest(px, py)
         if (selectMode) {
-            if (hit is GameUnit && hit.owner == 0) {
+            if (hit is GameUnit && hit.owner == me) {
                 if (!selection.remove(hit.id)) {
                     // Units only: drop a selected building when starting a group.
                     selection.removeAll { world.entity(it) !is GameUnit }
@@ -264,17 +268,17 @@ class GameController(val world: World, density: Float) {
             selectMode = false
         }
         val units = selectedUnits()
-        val building = selectedBuilding()?.takeIf { it.owner == 0 }
+        val building = selectedBuilding()?.takeIf { it.owner == me }
         when {
-            hit is GameUnit && hit.owner == 0 -> select(listOf(hit))
+            hit is GameUnit && hit.owner == me -> select(listOf(hit))
             // Tapping one of our buildings selects it, unless the villagers have an obvious job there:
             // finishing a construction or working a free farm (drop-offs happen automatically).
-            units.isNotEmpty() && hit is Building && hit.owner == 0 &&
+            units.isNotEmpty() && hit is Building && hit.owner == me &&
                 !(units.any { it.type == UnitType.VILLAGER } && (!hit.complete || hit.type == BuildingType.FARM && !world.farmTaken(hit))) ->
                 select(listOf(hit))
             units.isNotEmpty() -> {
                 world.commandSmart(units, w.x, w.y, hit)
-                val attack = hit != null && world.isEnemy(0, hit.owner)
+                val attack = hit != null && world.isEnemy(me, hit.owner)
                 markers += Marker(hit?.x ?: w.x, hit?.y ?: w.y, attack)
                 invalidateHud()
             }
@@ -290,7 +294,7 @@ class GameController(val world: World, density: Float) {
 
     fun onBoxSelect(rect: Rect) {
         val inBox = world.units.filter { u ->
-            u.alive && u.owner == 0 && rect.contains(Offset(camera.sx(u.x, u.y), camera.sy(u.x, u.y)))
+            u.alive && u.owner == me && rect.contains(Offset(camera.sx(u.x, u.y), camera.sy(u.x, u.y)))
         }
         if (inBox.isNotEmpty()) {
             // Like on PC, prefer military units when mixed with villagers.
@@ -305,9 +309,9 @@ class GameController(val world: World, density: Float) {
     fun onDoubleTap(px: Float, py: Float) {
         if (placing != null) return
         val hit = renderer.hitTest(px, py) as? GameUnit ?: return
-        if (hit.owner != 0) return
+        if (hit.owner != me) return
         val sameType = world.units.filter { u ->
-            u.alive && u.owner == 0 && u.type == hit.type &&
+            u.alive && u.owner == me && u.type == hit.type &&
                 camera.sx(u.x, u.y) in 0f..viewW && camera.sy(u.x, u.y) in 0f..viewH
         }
         select(if (selectMode) selectedUnits() + sameType else sameType)
@@ -404,14 +408,14 @@ class GameController(val world: World, density: Float) {
     }
 
     fun deleteSelected() {
-        selectedEntities().filter { it.owner == 0 }.forEach { world.deleteEntity(it) }
+        selectedEntities().filter { it.owner == me }.forEach { world.deleteEntity(it) }
         clearSelection()
     }
 
     fun villagerCountsByResource(): IntArray {
         val counts = IntArray(4)
         world.units.forEach { u ->
-            if (!u.alive || u.owner != 0 || u.type != UnitType.VILLAGER) return@forEach
+            if (!u.alive || u.owner != me || u.type != UnitType.VILLAGER) return@forEach
             if (u.task != Task.GATHER && u.task != Task.RETURN) return@forEach
             val t = when (val target = world.entity(u.targetId)) {
                 is ResourceNode -> target.kind.resource

@@ -15,9 +15,32 @@ data class GameConfig(
     val difficulty: Difficulty = Difficulty.NORMAL,
     val mapSize: Int = 64,
     val seed: Long = System.currentTimeMillis(),
+    /** Multiplayer line-up. Empty for a solo game (player 0 is the human, the others are AIs). */
+    val slots: List<PlayerSlot> = emptyList(),
 )
 
-data class GameEvent(val text: String, val x: Float = -1f, val y: Float = -1f, val alert: Boolean = false)
+/** One seat of a multiplayer game: a human (local or remote) or an AI. */
+data class PlayerSlot(val name: String, val civ: Civ, val human: Boolean, val team: Int)
+
+/**
+ * A message for the players: [to] is the recipient (or [EVERYONE]), [except] a player who must not
+ * get it. [seq] orders events so several readers (local HUD, network host) can follow the stream.
+ */
+data class GameEvent(
+    val text: String,
+    val x: Float = -1f,
+    val y: Float = -1f,
+    val alert: Boolean = false,
+    val to: Int = EVERYONE,
+    val except: Int = -1,
+    val seq: Long = 0,
+) {
+    fun isFor(player: Int) = (to == EVERYONE || to == player) && except != player
+
+    companion object {
+        const val EVERYONE = -1
+    }
+}
 
 /** @param generate false when the world is about to be restored from a save (see [SaveGame]). */
 class World(val config: GameConfig, generate: Boolean = true) {
@@ -33,21 +56,25 @@ class World(val config: GameConfig, generate: Boolean = true) {
     var time = 0f
         internal set
 
-    /** Events addressed to the human player (id 0). */
+    /** Recent events, oldest first; readers keep the last [GameEvent.seq] they handled. */
     val events = ArrayDeque<GameEvent>()
+    private var eventSeq = 0L
 
-    /** Winner id once the game is over, null while it runs. */
+    /** Winning team once the game is over (-1 if nobody), null while it runs. */
     var winner: Int? = null
         private set
 
-    // Fog of war for the human player.
+    /** The player this device plays: fog of war, events and controls are from their point of view. */
+    var viewer = 0
+
+    // Fog of war for the viewer (and their allies).
     val visible = BooleanArray(map.width * map.height)
     val explored = BooleanArray(map.width * map.height)
     var revealAll = false
     private var fogTimer = 0f
     private var victoryTimer = 0f
-    private var lastAttackAlert = -100f
-    private var lastHousingAlert = -100f
+    private val lastAttackAlert = HashMap<Int, Float>()
+    private val lastHousingAlert = HashMap<Int, Float>()
 
     val ais = ArrayList<AiPlayer>()
 
@@ -96,7 +123,10 @@ class World(val config: GameConfig, generate: Boolean = true) {
         }
     }
 
-    val human: Player get() = players[0]
+    /** The local player (see [viewer]). */
+    val human: Player get() = players[viewer]
+
+    fun hasWon(playerId: Int) = winner != null && winner == players[playerId].team
 
     // ------------------------------------------------------------------ Entity management
 
@@ -213,7 +243,9 @@ class World(val config: GameConfig, generate: Boolean = true) {
         return rate
     }
 
-    fun isEnemy(a: Int, b: Int) = a != b && a != GAIA && b != GAIA
+    fun isEnemy(a: Int, b: Int) = a != b && a != GAIA && b != GAIA && players[a].team != players[b].team
+
+    fun isAlly(a: Int, b: Int) = a == b || a != GAIA && b != GAIA && players[a].team == players[b].team
 
     fun canBuild(p: Player, type: BuildingType) = type != BuildingType.TOWN_CENTER || p.age >= Age.CASTLE
 
@@ -310,7 +342,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
         val p = players[playerId]
         if (p.age < type.minAge || !canBuild(p, type)) return null
         if (!map.canPlace(tx, ty, type.size)) return null
-        if (playerId == 0 && !revealAll && !isAreaExplored(tx, ty, type.size)) return null
+        if (playerId == viewer && !revealAll && !isAreaExplored(tx, ty, type.size)) return null
         if (!p.res.pay(p.buildingCost(type))) return null
         val b = addBuilding(playerId, type, tx, ty, complete = false)
         commandBuild(builders, b)
@@ -325,7 +357,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
     }
 
     fun canPlaceFor(playerId: Int, type: BuildingType, tx: Int, ty: Int): Boolean =
-        map.canPlace(tx, ty, type.size) && (playerId != 0 || revealAll || isAreaExplored(tx, ty, type.size))
+        map.canPlace(tx, ty, type.size) && (playerId != viewer || revealAll || isAreaExplored(tx, ty, type.size))
 
     sealed interface QueueResult {
         data object Ok : QueueResult
@@ -577,7 +609,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             farm.food = farmFood(p)
         } else {
             kill(farm, null)
-            if (p.isHuman) pushEvent("Une ferme est épuisée (bois insuffisant pour la ressemer)", farm.x, farm.y)
+            pushEvent("Une ferme est épuisée (bois insuffisant pour la ressemer)", farm.x, farm.y, to = p.id)
         }
     }
 
@@ -699,12 +731,10 @@ class World(val config: GameConfig, generate: Boolean = true) {
                 b.hp = max(b.hp, b.maxHp * 0.99f)
                 if (b.type == BuildingType.WONDER) {
                     b.wonderTimer = WONDER_TIME
-                    pushEvent(
-                        if (b.owner == 0) "Votre merveille est terminée ! Défendez-la ${WONDER_TIME.toInt()}s" else "${players[b.owner].name} a terminé une merveille !",
-                        b.x, b.y, alert = b.owner != 0,
-                    )
-                } else if (b.owner == 0) {
-                    pushEvent("${b.type.label} terminé(e)", b.x, b.y)
+                    pushEvent("Votre merveille est terminée ! Défendez-la ${WONDER_TIME.toInt()}s", b.x, b.y, to = b.owner)
+                    pushEvent("${players[b.owner].name} a terminé une merveille !", b.x, b.y, alert = true, except = b.owner)
+                } else {
+                    pushEvent("${b.type.label} terminé(e)", b.x, b.y, to = b.owner)
                 }
                 afterBuild(u, b)
             }
@@ -805,9 +835,10 @@ class World(val config: GameConfig, generate: Boolean = true) {
     fun applyDamage(target: Entity, dmg: Float, fromOwner: Int) {
         if (!target.alive) return
         target.hp -= dmg
-        if (target.owner == 0 && fromOwner != 0 && time - lastAttackAlert > 15f) {
-            lastAttackAlert = time
-            pushEvent("Vous êtes attaqué !", target.x, target.y, alert = true)
+        val victim = target.owner
+        if (victim != GAIA && isEnemy(victim, fromOwner) && time - (lastAttackAlert[victim] ?: -100f) > 15f) {
+            lastAttackAlert[victim] = time
+            pushEvent("Vous êtes attaqué !", target.x, target.y, alert = true, to = victim)
         }
         // Units under attack fight back if military and idle-ish.
         if (target is GameUnit && target.type.isMilitary && (target.task == Task.IDLE || target.task == Task.MOVE && target.path.isEmpty())) {
@@ -830,7 +861,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
                 // Refund queued items.
                 while (e.queue.isNotEmpty()) cancelQueue(e, e.queue.size - 1)
                 if (by != null && by >= 0) players[by].buildingsRazed++
-                if (e.owner == 0 && by != null) pushEvent("${e.type.label} détruit(e) !", e.x, e.y, alert = true)
+                if (by != null) pushEvent("${e.type.label} détruit(e) !", e.x, e.y, alert = true, to = e.owner)
             }
             is ResourceNode -> map.setOccupant(e.tx, e.ty, 1, -1)
         }
@@ -842,7 +873,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
         if (b.type == BuildingType.WONDER && b.wonderTimer > 0f) {
             b.wonderTimer -= dt
             if (b.wonderTimer <= 0f) {
-                winner = b.owner
+                winner = players[b.owner].team
                 return
             }
         }
@@ -865,9 +896,12 @@ class World(val config: GameConfig, generate: Boolean = true) {
         // Production queue.
         val item = b.queue.firstOrNull() ?: return
         if (item.unit != null && p.pop >= p.popCap) {
-            if (p.isHuman && time - lastHousingAlert > 20f) {
-                lastHousingAlert = time
-                pushEvent(if (p.popCap >= Player.MAX_POP) "Population maximale atteinte" else "Population maximale : construisez des maisons !", alert = true)
+            if (p.isHuman && time - (lastHousingAlert[p.id] ?: -100f) > 20f) {
+                lastHousingAlert[p.id] = time
+                pushEvent(
+                    if (p.popCap >= Player.MAX_POP) "Population maximale atteinte" else "Population maximale : construisez des maisons !",
+                    alert = true, to = p.id,
+                )
             }
             return
         }
@@ -889,15 +923,13 @@ class World(val config: GameConfig, generate: Boolean = true) {
                             it.buildMaxHp = buildingMaxHp(p, it.type)
                         }
                     }
-                    if (p.isHuman) pushEvent("Recherche terminée : ${item.tech.label}")
+                    pushEvent("Recherche terminée : ${item.tech.label}", to = p.id)
                 }
                 item.age != null -> {
                     p.age = item.age
                     p.researchingAge = false
-                    pushEvent(
-                        if (p.isHuman) "Vous entrez dans l'${item.age.label.lowercase()} !" else "${p.name} entre dans l'${item.age.label.lowercase()}",
-                        alert = !p.isHuman,
-                    )
+                    pushEvent("Vous entrez dans l'${item.age.label.lowercase()} !", to = p.id)
+                    pushEvent("${p.name} entre dans l'${item.age.label.lowercase()}", alert = true, except = p.id)
                 }
             }
         }
@@ -927,9 +959,6 @@ class World(val config: GameConfig, generate: Boolean = true) {
             } else {
                 commandMove(listOf(u), b.rallyX, b.rallyY)
             }
-        }
-        if (b.owner == 0 && type == UnitType.VILLAGER && !hasRally) {
-            // nothing: idle villager button will help find it
         }
     }
 
@@ -1179,8 +1208,9 @@ class World(val config: GameConfig, generate: Boolean = true) {
             java.util.Arrays.fill(explored, true)
             return
         }
-        for (u in units) if (u.alive && u.owner == 0) reveal(u.x, u.y, u.type.los.toFloat())
-        for (b in buildings) if (b.alive && b.owner == 0) reveal(b.x, b.y, b.type.los + b.size / 2f)
+        // Allies share their vision.
+        for (u in units) if (u.alive && isAlly(u.owner, viewer)) reveal(u.x, u.y, u.type.los.toFloat())
+        for (b in buildings) if (b.alive && isAlly(b.owner, viewer)) reveal(b.x, b.y, b.type.los + b.size / 2f)
     }
 
     private fun reveal(cx: Float, cy: Float, r: Float) {
@@ -1208,9 +1238,9 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     fun isExplored(tx: Int, ty: Int) = map.inBounds(tx, ty) && explored[map.idx(tx, ty)]
 
-    /** Whether the human player can currently see this entity. */
+    /** Whether the local player ([viewer]) can currently see this entity. */
     fun canSee(e: Entity): Boolean = when {
-        e.owner == 0 -> true
+        e.owner != GAIA && isAlly(e.owner, viewer) -> true
         e is GameUnit -> isVisible(e.x, e.y)
         e is Building -> isAnyTileExplored(e.tx, e.ty, e.size)
         e is ResourceNode -> isExplored(e.tx, e.ty)
@@ -1230,20 +1260,28 @@ class World(val config: GameConfig, generate: Boolean = true) {
             if (!hasBuilding && !hasUnit) {
                 p.defeated = true
                 buildings.filter { it.owner == p.id }.forEach { kill(it, null) }
-                pushEvent(if (p.isHuman) "Vous avez été vaincu." else "${p.name} a été vaincu !", alert = true)
+                pushEvent("Vous avez été vaincu.", alert = true, to = p.id)
+                pushEvent("${p.name} a été vaincu !", alert = true, except = p.id)
             }
         }
-        if (human.defeated) {
-            winner = players.firstOrNull { !it.defeated }?.id ?: -1
-        } else if (players.none { !it.isHuman && !it.defeated }) {
-            winner = 0
+        val aliveTeams = players.filter { !it.defeated }.map { it.team }.toSet()
+        when {
+            // One team left standing.
+            aliveTeams.size <= 1 -> winner = aliveTeams.firstOrNull() ?: -1
+            // Only AIs left: nobody is there to play it out.
+            players.none { it.isHuman && !it.defeated } -> winner = players.first { !it.defeated }.team
         }
     }
 
-    fun pushEvent(text: String, x: Float = -1f, y: Float = -1f, alert: Boolean = false) {
-        events.addLast(GameEvent(text, x, y, alert))
-        while (events.size > 20) events.removeFirst()
+    fun pushEvent(text: String, x: Float = -1f, y: Float = -1f, alert: Boolean = false, to: Int = GameEvent.EVERYONE, except: Int = -1) {
+        events.addLast(GameEvent(text, x, y, alert, to, except, ++eventSeq))
+        while (events.size > 64) events.removeFirst()
     }
+
+    /** Events for [player] newer than [afterSeq]. */
+    fun eventsFor(player: Int, afterSeq: Long): List<GameEvent> = events.filter { it.seq > afterSeq && it.isFor(player) }
+
+    val lastEventSeq get() = eventSeq
 
     /** Debug/test helper. */
     fun forceAdvance(seconds: Float, step: Float = 0.05f) {
