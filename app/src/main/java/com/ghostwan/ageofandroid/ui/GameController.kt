@@ -9,8 +9,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import com.ghostwan.ageofandroid.game.Age
 import com.ghostwan.ageofandroid.game.Building
 import com.ghostwan.ageofandroid.game.BuildingType
+import com.ghostwan.ageofandroid.game.Cost
 import com.ghostwan.ageofandroid.game.Entity
 import com.ghostwan.ageofandroid.game.GameUnit
 import com.ghostwan.ageofandroid.game.ResourceNode
@@ -99,8 +101,11 @@ class GameController(val world: World, density: Float) {
     var box: Rect? = null
     var lastError by mutableStateOf<String?>(null)
 
-    /** Building whose info card is shown because it cannot be placed yet (locked or too expensive). */
-    var buildingInfo by mutableStateOf<BuildingType?>(null)
+    /**
+     * Subject of the info card ([BuildingType], [UnitType], [Tech] or [Age]): shown on long press, or when
+     * a button is tapped but its action is not possible yet (locked or too expensive).
+     */
+    var info by mutableStateOf<Any?>(null)
     val toasts = mutableStateListOf<Toast>()
     val markers = ArrayList<Marker>()
     private val selection = LinkedHashSet<Int>()
@@ -188,6 +193,7 @@ class GameController(val world: World, density: Float) {
     fun selectedBuilding(): Building? = selectedEntities().singleOrNull() as? Building
 
     fun select(entities: Collection<Entity>) {
+        info = null
         selection.clear()
         entities.forEach { selection += it.id }
         invalidateHud()
@@ -228,7 +234,7 @@ class GameController(val world: World, density: Float) {
     // ------------------------------------------------------------------ Input
 
     fun onTap(px: Float, py: Float) {
-        buildingInfo = null
+        info = null
         val w = camera.toWorld(px, py)
         placing?.let { type ->
             moveGhost(type, w.x, w.y)
@@ -276,10 +282,10 @@ class GameController(val world: World, density: Float) {
     fun startPlacement(type: BuildingType) {
         val p = world.human
         if (p.age < type.minAge || !p.res.canAfford(p.buildingCost(type))) {
-            buildingInfo = type
+            info = type
             return
         }
-        buildingInfo = null
+        info = null
         placing = type
         val c = camera.toWorld(viewW / 2f, viewH / 2f)
         moveGhost(type, c.x, c.y)
@@ -319,18 +325,34 @@ class GameController(val world: World, density: Float) {
         invalidateHud()
     }
 
+    /** Opens the info card instead of failing when the player lacks the age or the resources. */
+    private fun explainIfBlocked(subject: Any, minAge: Age, cost: Cost): Boolean {
+        val p = world.human
+        if (p.age >= minAge && p.res.canAfford(cost)) return false
+        info = subject
+        invalidateHud()
+        return true
+    }
+
     fun train(type: UnitType) {
         val b = selectedBuilding() ?: return
+        if (explainIfBlocked(type, type.minAge, type.cost)) return
+        info = null
         handle(world.train(b, type))
     }
 
     fun research(tech: Tech) {
         val b = selectedBuilding() ?: return
+        if (explainIfBlocked(tech, tech.minAge, tech.cost)) return
+        info = null
         handle(world.research(b, tech))
     }
 
     fun advanceAge() {
         val b = selectedBuilding() ?: return
+        val next = world.human.age.next ?: return
+        if (explainIfBlocked(next, Age.DARK, next.cost)) return
+        info = null
         handle(world.advanceAge(b))
     }
 

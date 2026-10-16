@@ -77,7 +77,9 @@ enum class Difficulty(val label: String, val gatherBonus: Float, val firstAttack
     HARD("Difficile", 1.25f, 300f, 32),
 }
 
-enum class Category { VILLAGER, INFANTRY, ARCHER, CAVALRY, SIEGE, BUILDING }
+enum class Category(val label: String) {
+    VILLAGER("villageois"), INFANTRY("infanterie"), ARCHER("archers"), CAVALRY("cavalerie"), SIEGE("siège"), BUILDING("bâtiments"),
+}
 
 enum class BuildingType(
     val label: String,
@@ -145,34 +147,42 @@ enum class UnitType(
     val trainedAt: BuildingType,
     val minAge: Age = Age.DARK,
     val bonus: Map<Category, Int> = emptyMap(),
+    val description: String = "",
 ) {
     VILLAGER(
         "Villageois", "👷", Category.VILLAGER, Cost(food = 50), 15f, 25, 3, 0, 1, 0f, 2f, 1.15f, 4,
         BuildingType.TOWN_CENTER,
+        description = "Récolte les ressources et construit les bâtiments. Se défend mal au combat.",
     ),
     MILITIA(
         "Milicien", "🗡️", Category.INFANTRY, Cost(food = 60, gold = 20), 15f, 45, 5, 0, 1, 0f, 2f, 1.0f, 4,
         BuildingType.BARRACKS, bonus = mapOf(Category.BUILDING to 3),
+        description = "Fantassin polyvalent et bon marché, efficace pour raser les bâtiments.",
     ),
     SPEARMAN(
         "Piquier", "🔱", Category.INFANTRY, Cost(food = 35, wood = 25), 15f, 45, 3, 0, 0, 0f, 2f, 1.0f, 4,
         BuildingType.BARRACKS, Age.FEUDAL, mapOf(Category.CAVALRY to 15, Category.BUILDING to 1),
+        description = "Fantassin anti-cavalerie, idéal contre éclaireurs et chevaliers. Vulnérable aux archers.",
     ),
     ARCHER(
         "Archer", "🏹", Category.ARCHER, Cost(wood = 25, gold = 45), 18f, 30, 4, 0, 0, 4f, 2f, 0.96f, 6,
         BuildingType.ARCHERY_RANGE, Age.FEUDAL, mapOf(Category.INFANTRY to 3),
+        description = "Attaque à distance, efficace contre l'infanterie. Fragile au corps à corps, surtout face à la cavalerie.",
     ),
     SCOUT(
         "Éclaireur", "🐴", Category.CAVALRY, Cost(food = 80), 15f, 45, 3, 0, 2, 0f, 2f, 1.75f, 6,
         BuildingType.STABLE, Age.FEUDAL, mapOf(Category.ARCHER to 4),
+        description = "Cavalier très rapide, parfait pour explorer et chasser les archers. Faible contre les piquiers.",
     ),
     KNIGHT(
         "Chevalier", "🏇", Category.CAVALRY, Cost(food = 60, gold = 75), 20f, 100, 10, 2, 2, 0f, 1.8f, 1.5f, 5,
         BuildingType.STABLE, Age.CASTLE,
+        description = "Cavalerie lourde, puissante et résistante. Vulnérable aux piquiers.",
     ),
     RAM(
         "Bélier", "🐏", Category.SIEGE, Cost(wood = 160, gold = 75), 25f, 175, 2, 0, 180, 0f, 3f, 0.6f, 3,
         BuildingType.SIEGE_WORKSHOP, Age.CASTLE, mapOf(Category.BUILDING to 125),
+        description = "Engin de siège lent : dévastateur contre les bâtiments, quasi insensible aux flèches, presque inoffensif contre les unités.",
     );
 
     val isMilitary get() = category != Category.VILLAGER

@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -53,12 +54,14 @@ import androidx.compose.ui.unit.sp
 import com.ghostwan.ageofandroid.game.Age
 import com.ghostwan.ageofandroid.game.Building
 import com.ghostwan.ageofandroid.game.BuildingType
+import com.ghostwan.ageofandroid.game.Cost
 import com.ghostwan.ageofandroid.game.Entity
 import com.ghostwan.ageofandroid.game.GameUnit
 import com.ghostwan.ageofandroid.game.NodeKind
 import com.ghostwan.ageofandroid.game.ResourceNode
 import com.ghostwan.ageofandroid.game.ResourceType
 import com.ghostwan.ageofandroid.game.Task
+import com.ghostwan.ageofandroid.game.Tech
 import com.ghostwan.ageofandroid.game.Terrain
 import com.ghostwan.ageofandroid.game.UnitType
 import kotlin.math.sqrt
@@ -118,9 +121,9 @@ fun Hud(c: GameController, onMenu: () -> Unit) {
                 )
             }
         }
-        c.buildingInfo?.let { type ->
-            BuildingInfoCard(
-                c, type,
+        c.info?.let { subject ->
+            InfoCard(
+                c, subject,
                 Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = BOTTOM_BAR_HEIGHT + 8.dp, start = 16.dp, end = 16.dp),
@@ -580,6 +583,7 @@ private fun BuildButton(c: GameController, t: BuildingType) {
         affordable = p.res.canAfford(cost),
         // Locked buildings stay tappable to show what they are for.
         clickableWhenDisabled = true,
+        onLongClick = { c.info = t },
     ) { c.startPlacement(t) }
 }
 
@@ -596,12 +600,63 @@ fun buildingDetails(t: BuildingType): String {
     return parts.joinToString(" ")
 }
 
-/** Shown when a build button is tapped but the building cannot be placed yet. */
+/** Role, strengths and stats of a unit. */
+fun unitDetails(u: UnitType): String {
+    val parts = mutableListOf(u.description)
+    val stats = mutableListOf("${u.maxHp} PV", "attaque ${u.attack}", "armure ${u.meleeArmor}/${u.pierceArmor}")
+    if (u.range > 0f) stats += "portée ${u.range.toInt()}"
+    parts += stats.joinToString(" • ").replaceFirstChar { it.uppercase() } + "."
+    if (u.bonus.isNotEmpty()) {
+        parts += "Bonus : " + u.bonus.entries.joinToString(", ") { (cat, dmg) -> "+$dmg contre ${cat.label}" } + "."
+    }
+    parts += "Formé à : ${u.trainedAt.label}."
+    return parts.joinToString(" ")
+}
+
+/** What reaching an age unlocks. */
+fun ageDetails(age: Age): String {
+    val unlocks = BuildingType.entries.filter { it.minAge == age }.map { it.label } +
+        UnitType.entries.filter { it.minAge == age }.map { it.label } +
+        Tech.entries.filter { it.minAge == age }.map { it.label }
+    return "Passage à l'${age.label}, recherché au forum. Débloque : ${unlocks.joinToString(", ")}."
+}
+
+/**
+ * Card describing a building, unit, technology or age. Opens on long press of an action button, or on
+ * tap when the action is not possible yet, and then says what is missing.
+ */
 @Composable
-private fun BuildingInfoCard(c: GameController, type: BuildingType, modifier: Modifier) {
+private fun InfoCard(c: GameController, subject: Any, modifier: Modifier) {
     c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
     val p = c.world.human
-    val cost = p.buildingCost(type)
+    val icon: String
+    val label: String
+    val cost: Cost
+    val time: Float
+    val minAge: Age
+    val details: String
+    var done = false
+    when (subject) {
+        is BuildingType -> {
+            icon = subject.icon; label = subject.label; cost = p.buildingCost(subject); time = subject.buildTime
+            minAge = subject.minAge; details = buildingDetails(subject)
+        }
+        is UnitType -> {
+            icon = subject.icon; label = subject.label; cost = subject.cost; time = subject.trainTime
+            minAge = subject.minAge; details = unitDetails(subject)
+        }
+        is Tech -> {
+            icon = subject.icon; label = subject.label; cost = subject.cost; time = subject.time
+            minAge = subject.minAge; details = "${subject.description}. Recherchée à : ${subject.researchedAt.label}."
+            done = p.has(subject)
+        }
+        is Age -> {
+            icon = "⏫"; label = subject.label; cost = subject.cost; time = subject.researchTime
+            minAge = Age.DARK; details = ageDetails(subject)
+            done = p.age >= subject
+        }
+        else -> return
+    }
     val missing = ResourceType.entries
         .filter { cost[it] > p.res[it] }
         .joinToString(" ") { "${it.icon}${cost[it] - p.res[it]}" }
@@ -611,22 +666,23 @@ private fun BuildingInfoCard(c: GameController, type: BuildingType, modifier: Mo
             .clip(RoundedCornerShape(8.dp))
             .background(PanelColor)
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
-            .clickable { c.buildingInfo = null }
+            .clickable { c.info = null }
             .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GameIcon(type.icon, 34.sp)
+        GameIcon(icon, 34.sp)
         Column(Modifier.weight(1f, fill = false)) {
             Text(
-                "${type.label}  •  $cost  •  ⏱ ${type.buildTime.toInt()}s",
+                listOfNotNull(label, cost.toString().takeIf { it.isNotEmpty() }, "⏱ ${time.toInt()}s").joinToString("  •  "),
                 color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp,
             )
             when {
-                p.age < type.minAge -> Text("🔒 Disponible à partir de l'${type.minAge.label}", color = BorderGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                done -> Text("✔ Déjà acquis", color = Color(0xFF8FD07A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                p.age < minAge -> Text("🔒 Disponible à partir de l'${minAge.label}", color = BorderGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 missing.isNotEmpty() -> Text("Ressources insuffisantes, il manque : $missing", color = Color(0xFFFF8070), fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
-            Text(buildingDetails(type), color = TextCream, fontSize = 12.sp, lineHeight = 15.sp)
+            Text(details, color = TextCream, fontSize = 12.sp, lineHeight = 15.sp)
         }
         Text("✖", color = TextDim, fontSize = 16.sp)
     }
@@ -652,6 +708,8 @@ private fun BuildingActions(c: GameController, b: Building) {
                         time = u.trainTime,
                         enabled = !locked,
                         affordable = p.res.canAfford(u.cost),
+                        clickableWhenDisabled = true,
+                        onLongClick = { c.info = u },
                     ) { c.train(u) }
                 }
             }
@@ -661,6 +719,7 @@ private fun BuildingActions(c: GameController, b: Building) {
                         ActionButton(
                             "⏫", next.label, cost = next.cost.toString(), time = next.researchTime,
                             enabled = !p.researchingAge, affordable = p.res.canAfford(next.cost),
+                            onLongClick = { c.info = next },
                         ) { c.advanceAge() }
                     }
                 }
@@ -675,6 +734,8 @@ private fun BuildingActions(c: GameController, b: Building) {
                         time = t.time,
                         enabled = !locked && t !in p.researching,
                         affordable = p.res.canAfford(t.cost),
+                        clickableWhenDisabled = locked,
+                        onLongClick = { c.info = t },
                     ) { c.research(t) }
                 }
             }
@@ -730,6 +791,7 @@ fun ActionButton(
     enabled: Boolean = true,
     affordable: Boolean = true,
     clickableWhenDisabled: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Column(
@@ -739,7 +801,7 @@ fun ActionButton(
             .clip(RoundedCornerShape(8.dp))
             .background(if (enabled) Color(0xFF3E2C18) else Color(0xFF2A2018))
             .border(1.dp, if (enabled && affordable) BorderGold else BorderGold.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-            .clickable(enabled = enabled || clickableWhenDisabled, onClick = onClick)
+            .combinedClickable(enabled = enabled || clickableWhenDisabled, onLongClick = onLongClick, onClick = onClick)
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

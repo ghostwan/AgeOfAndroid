@@ -29,6 +29,7 @@ Un jeu de stratégie en temps réel inspiré d'**Age of Empires II**, repensé p
 | Glisser / pincer | Déplacer la caméra / zoomer |
 | Unités sélectionnées + toucher la carte | Ordre contextuel : déplacer, récolter, construire, attaquer (toucher un de vos bâtiments le sélectionne, sauf chantier ou ferme libre) |
 | Bouton de construction | Affiche à quoi sert le bâtiment (unités, améliorations, temps, PV) ; s'il est verrouillé ou trop cher, une fiche indique ce qui manque |
+| Appui long sur un bouton (bâtiment, unité, amélioration, âge) | Fiche détaillée : rôle, forces et faiblesses, stats, ce que ça débloque. Un bouton verrouillé ou trop cher ouvre aussi la fiche en le touchant |
 | Bâtiment sélectionné + toucher la carte | Point de ralliement |
 | 💤👷 / ⚔️ / 🏛️ | Villageois inactif suivant / toute l'armée / forum |
 | ▼ / ▲ | Replier / déplier la barre du bas (mini-carte et actions) |

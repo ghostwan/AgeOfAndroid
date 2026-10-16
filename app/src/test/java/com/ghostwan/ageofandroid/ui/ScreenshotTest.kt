@@ -171,13 +171,21 @@ class ScreenshotTest {
             controller.startPlacement(com.ghostwan.ageofandroid.game.BuildingType.STABLE)
         }
         repeat(3) { compose.mainClock.advanceTimeBy(100) }
-        assertEquals(com.ghostwan.ageofandroid.game.BuildingType.STABLE, controller.buildingInfo)
+        assertEquals(com.ghostwan.ageofandroid.game.BuildingType.STABLE, controller.info)
         compose.onNodeWithText("Disponible à partir", substring = true).assertExists()
         capture("building_info_locked")
         compose.runOnUiThread { controller.startPlacement(com.ghostwan.ageofandroid.game.BuildingType.MILL) }
         repeat(3) { compose.mainClock.advanceTimeBy(100) }
-        assertEquals(null, controller.buildingInfo)
+        assertEquals(null, controller.info)
         compose.onNodeWithText("Dépôt de nourriture", substring = true).assertExists()
         capture("building_placement_info")
+        compose.runOnUiThread { controller.info = com.ghostwan.ageofandroid.game.UnitType.SPEARMAN }
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        compose.onNodeWithText("anti-cavalerie", substring = true).assertExists()
+        compose.onNodeWithText("+15 contre cavalerie", substring = true).assertExists()
+        capture("unit_info_spearman")
+        compose.runOnUiThread { controller.info = com.ghostwan.ageofandroid.game.Age.FEUDAL }
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        capture("age_info_feudal")
     }
 }
