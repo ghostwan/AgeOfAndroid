@@ -118,6 +118,14 @@ fun Hud(c: GameController, onMenu: () -> Unit) {
                 )
             }
         }
+        c.buildingInfo?.let { type ->
+            BuildingInfoCard(
+                c, type,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = BOTTOM_BAR_HEIGHT + 8.dp, start = 16.dp, end = 16.dp),
+            )
+        }
         c.lastError?.let {
             Text(
                 it,
@@ -365,11 +373,17 @@ private fun PlacementBar(c: GameController) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(type.icon, fontSize = 34.sp)
+        GameIcon(type.icon, 34.sp)
         Column(Modifier.weight(1f)) {
-            Text("Placer : ${type.label}", color = TextCream, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Text("Touchez la carte pour déplacer le bâtiment, puis validez.", color = TextDim, fontSize = 12.sp)
-            Text(c.world.human.buildingCost(type).toString(), color = TextCream, fontSize = 13.sp)
+            Text(
+                "${type.label}  •  ${c.world.human.buildingCost(type)}  •  ⏱ ${type.buildTime.toInt()}s",
+                color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1,
+            )
+            Text(
+                buildingDetails(type), color = TextCream, fontSize = 12.sp, lineHeight = 14.sp,
+                maxLines = 3, overflow = TextOverflow.Ellipsis,
+            )
+            Text("Touchez la carte pour choisir l'emplacement, puis ✔.", color = TextDim, fontSize = 11.sp, maxLines = 1)
         }
         ActionButton("✔", "Placer", enabled = c.ghostValid()) { c.confirmPlacement() }
         if (type == BuildingType.HOUSE || type == BuildingType.FARM) {
@@ -564,7 +578,58 @@ private fun BuildButton(c: GameController, t: BuildingType) {
         cost = cost.toString(),
         enabled = !locked,
         affordable = p.res.canAfford(cost),
+        // Locked buildings stay tappable to show what they are for.
+        clickableWhenDisabled = true,
     ) { c.startPlacement(t) }
+}
+
+/** What a building is for: description, units it trains, technologies, build time and HP. */
+fun buildingDetails(t: BuildingType): String {
+    val parts = mutableListOf(t.description)
+    if (t.trains.isNotEmpty()) {
+        parts += "Forme : " + t.trains.joinToString(", ") { u ->
+            u.label + if (u.minAge > Age.DARK) " (${u.minAge.label})" else ""
+        } + "."
+    }
+    if (t.techs.isNotEmpty()) parts += "Améliorations : " + t.techs.joinToString(", ") { it.label } + "."
+    parts += "${t.maxHp} PV."
+    return parts.joinToString(" ")
+}
+
+/** Shown when a build button is tapped but the building cannot be placed yet. */
+@Composable
+private fun BuildingInfoCard(c: GameController, type: BuildingType, modifier: Modifier) {
+    c.hud // read HUD ticks: with strong skipping this composable would otherwise never refresh
+    val p = c.world.human
+    val cost = p.buildingCost(type)
+    val missing = ResourceType.entries
+        .filter { cost[it] > p.res[it] }
+        .joinToString(" ") { "${it.icon}${cost[it] - p.res[it]}" }
+    Row(
+        modifier
+            .widthIn(max = 560.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(PanelColor)
+            .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
+            .clickable { c.buildingInfo = null }
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GameIcon(type.icon, 34.sp)
+        Column(Modifier.weight(1f, fill = false)) {
+            Text(
+                "${type.label}  •  $cost  •  ⏱ ${type.buildTime.toInt()}s",
+                color = TextCream, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+            )
+            when {
+                p.age < type.minAge -> Text("🔒 Disponible à partir de l'${type.minAge.label}", color = BorderGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                missing.isNotEmpty() -> Text("Ressources insuffisantes, il manque : $missing", color = Color(0xFFFF8070), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(buildingDetails(type), color = TextCream, fontSize = 12.sp, lineHeight = 15.sp)
+        }
+        Text("✖", color = TextDim, fontSize = 16.sp)
+    }
 }
 
 @Composable
@@ -664,6 +729,7 @@ fun ActionButton(
     time: Float? = null,
     enabled: Boolean = true,
     affordable: Boolean = true,
+    clickableWhenDisabled: Boolean = false,
     onClick: () -> Unit,
 ) {
     Column(
@@ -673,7 +739,7 @@ fun ActionButton(
             .clip(RoundedCornerShape(8.dp))
             .background(if (enabled) Color(0xFF3E2C18) else Color(0xFF2A2018))
             .border(1.dp, if (enabled && affordable) BorderGold else BorderGold.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled || clickableWhenDisabled, onClick = onClick)
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

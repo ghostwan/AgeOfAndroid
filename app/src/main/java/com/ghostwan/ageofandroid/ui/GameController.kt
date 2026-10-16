@@ -98,6 +98,9 @@ class GameController(val world: World, density: Float) {
         private set
     var box: Rect? = null
     var lastError by mutableStateOf<String?>(null)
+
+    /** Building whose info card is shown because it cannot be placed yet (locked or too expensive). */
+    var buildingInfo by mutableStateOf<BuildingType?>(null)
     val toasts = mutableStateListOf<Toast>()
     val markers = ArrayList<Marker>()
     private val selection = LinkedHashSet<Int>()
@@ -225,6 +228,7 @@ class GameController(val world: World, density: Float) {
     // ------------------------------------------------------------------ Input
 
     fun onTap(px: Float, py: Float) {
+        buildingInfo = null
         val w = camera.toWorld(px, py)
         placing?.let { type ->
             moveGhost(type, w.x, w.y)
@@ -271,10 +275,11 @@ class GameController(val world: World, density: Float) {
 
     fun startPlacement(type: BuildingType) {
         val p = world.human
-        if (!p.res.canAfford(p.buildingCost(type))) {
-            showError("Ressources insuffisantes")
+        if (p.age < type.minAge || !p.res.canAfford(p.buildingCost(type))) {
+            buildingInfo = type
             return
         }
+        buildingInfo = null
         placing = type
         val c = camera.toWorld(viewW / 2f, viewH / 2f)
         moveGhost(type, c.x, c.y)

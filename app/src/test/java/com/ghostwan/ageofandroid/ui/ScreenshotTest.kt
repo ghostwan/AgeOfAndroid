@@ -160,4 +160,24 @@ class ScreenshotTest {
         assertTrue("help button cut: $help in $screen", help.bottom <= screen.bottom)
         capture("menu_continue_small")
     }
+
+    @Test
+    fun buildingInfo() {
+        compose.mainClock.autoAdvance = false
+        val controller = GameController(World(GameConfig(opponents = 1, mapSize = 56, seed = 7L)), 2f)
+        compose.setContent { GameScreen(controller, onQuit = {}) }
+        compose.runOnUiThread {
+            controller.select(controller.world.units.filter { it.owner == 0 && it.type.name == "VILLAGER" }.take(1))
+            controller.startPlacement(com.ghostwan.ageofandroid.game.BuildingType.STABLE)
+        }
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        assertEquals(com.ghostwan.ageofandroid.game.BuildingType.STABLE, controller.buildingInfo)
+        compose.onNodeWithText("Disponible à partir", substring = true).assertExists()
+        capture("building_info_locked")
+        compose.runOnUiThread { controller.startPlacement(com.ghostwan.ageofandroid.game.BuildingType.MILL) }
+        repeat(3) { compose.mainClock.advanceTimeBy(100) }
+        assertEquals(null, controller.buildingInfo)
+        compose.onNodeWithText("Dépôt de nourriture", substring = true).assertExists()
+        capture("building_placement_info")
+    }
 }
