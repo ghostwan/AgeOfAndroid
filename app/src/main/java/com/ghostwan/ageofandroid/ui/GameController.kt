@@ -202,6 +202,8 @@ class GameController(val world: World, density: Float) {
         info = null
         selection.clear()
         entities.forEach { selection += it.id }
+        // Selecting something unfolds the bottom bar so its details and actions are visible.
+        if (selection.isNotEmpty()) bottomBarVisible = true
         invalidateHud()
     }
 
@@ -253,6 +255,7 @@ class GameController(val world: World, density: Float) {
                     // Units only: drop a selected building when starting a group.
                     selection.removeAll { world.entity(it) !is GameUnit }
                     selection += hit.id
+                    bottomBarVisible = true
                 }
                 invalidateHud()
                 return
