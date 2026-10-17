@@ -75,6 +75,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
     private var victoryTimer = 0f
     private val lastAttackAlert = HashMap<Int, Float>()
     private val lastHousingAlert = HashMap<Int, Float>()
+    private val lastRepairAlert = HashMap<Int, Float>()
 
     val ais = ArrayList<AiPlayer>()
 
@@ -336,7 +337,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             target is Building && target.owner == owner -> {
                 val villagers = group.filter { it.type == UnitType.VILLAGER }
                 when {
-                    !target.complete -> commandBuild(villagers, target)
+                    !target.complete || needsRepair(target) -> commandBuild(villagers, target)
                     target.type == BuildingType.FARM -> commandGather(villagers, target)
                     target.type.isDropSite -> {
                         villagers.forEach { v ->
@@ -735,7 +736,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             return
         }
         if (b.complete) {
-            afterBuild(u, b)
+            if (needsRepair(b)) repair(u, p, b, dt) else afterBuild(u, b)
             return
         }
         if (b.distanceTo(u.x, u.y) <= 1.0f) {
@@ -759,6 +760,45 @@ class World(val config: GameConfig, generate: Boolean = true) {
             }
         } else {
             moveToEntity(u, b, 0.85f, dt)
+        }
+    }
+
+    /** A finished building that lost HP can be repaired by villagers (not farms, which are reseeded). */
+    fun needsRepair(b: Building) = b.complete && b.type != BuildingType.FARM && b.hp < b.maxHp - 0.5f
+
+    /** HP restored per second by one villager. */
+    fun repairRate(b: Building) = max(8f, b.maxHp / b.type.buildTime * 0.5f)
+
+    /** Resources needed to restore [hp]: a full repair costs half the building's price, as in AoE2. */
+    fun repairCost(p: Player, b: Building, hp: Float): FloatArray {
+        val cost = p.buildingCost(b.type)
+        return FloatArray(ResourceType.entries.size) { cost[ResourceType.entries[it]] * 0.5f * hp / b.maxHp }
+    }
+
+    private fun repair(u: GameUnit, p: Player, b: Building, dt: Float) {
+        if (b.distanceTo(u.x, u.y) > 1.0f) {
+            moveToEntity(u, b, 0.85f, dt)
+            return
+        }
+        u.clearPath()
+        faceTowards(u, b.x, b.y)
+        val heal = min(repairRate(b) * dt, b.maxHp - b.hp)
+        val cost = repairCost(p, b, heal)
+        if (ResourceType.entries.any { p.res.exact(it) < cost[it.ordinal] }) {
+            u.task = Task.IDLE
+            u.targetId = -1
+            if (time - (lastRepairAlert[p.id] ?: -100f) > 10f) {
+                lastRepairAlert[p.id] = time
+                pushEvent("Ressources insuffisantes pour réparer : ${b.type.label}", b.x, b.y, alert = true, to = p.id)
+            }
+            return
+        }
+        ResourceType.entries.forEach { p.res.add(it, -cost[it.ordinal]) }
+        b.hp += heal
+        u.animTime += dt
+        if (!needsRepair(b)) {
+            b.hp = b.maxHp
+            afterBuild(u, b)
         }
     }
 

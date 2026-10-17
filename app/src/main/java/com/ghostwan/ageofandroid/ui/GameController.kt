@@ -293,9 +293,9 @@ class GameController(val world: World, density: Float) {
         when {
             hit is GameUnit && hit.owner == me -> select(listOf(hit))
             // Tapping one of our buildings selects it, unless the villagers have an obvious job there:
-            // finishing a construction or working a free farm (drop-offs happen automatically).
+            // finishing a construction, repairing it or working a free farm (drop-offs happen automatically).
             units.isNotEmpty() && hit is Building && hit.owner == me &&
-                !(units.any { it.type == UnitType.VILLAGER } && (!hit.complete || hit.type == BuildingType.FARM && !world.farmTaken(hit))) ->
+                !(units.any { it.type == UnitType.VILLAGER } && (!hit.complete || world.needsRepair(hit) || hit.type == BuildingType.FARM && !world.farmTaken(hit))) ->
                 select(listOf(hit))
             units.isNotEmpty() -> {
                 sendCommand(Command.Smart(me, units.map { it.id }, w.x, w.y, hit?.id ?: -1))

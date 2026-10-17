@@ -508,6 +508,10 @@ private fun SingleSelection(c: GameController, e: Entity) {
             val p = world.players[e.owner]
             val subtitle = when {
                 !e.complete -> "Construction : ${(e.progress * 100).toInt()}%"
+                e.owner == c.me && world.needsRepair(e) && world.units.any { it.task == Task.BUILD && it.targetId == e.id } ->
+                    "🔨 Réparation en cours…"
+                e.owner == c.me && world.needsRepair(e) ->
+                    "🔨 Endommagé : sélectionnez des villageois puis touchez ce bâtiment pour le réparer (coûte des ressources)."
                 e.type == BuildingType.FARM -> "Nourriture restante : ${e.food.toInt()}"
                 e.type == BuildingType.WONDER && e.wonderTimer > 0f -> "Victoire dans ${formatTime(e.wonderTimer)}"
                 e.type.trains.isNotEmpty() && e.owner == c.me -> e.type.description + " Touchez la carte pour placer le point de ralliement."
@@ -908,6 +912,7 @@ const val HELP_TEXT = """Objectif : détruisez tous les bâtiments et unités en
 • Appui long + glisser : sélection de groupe.
 • Glisser : déplacer la caméra. Pincer : zoomer.
 • Unités sélectionnées + toucher la carte : ordre contextuel (déplacer, récolter, construire, attaquer).
+• Villageois + toucher un de vos bâtiments endommagé : réparation (coûte la moitié du prix pour une réparation complète).
 • Bâtiment sélectionné + toucher la carte : point de ralliement.
 • 💤👷 : villageois inactif suivant. ⚔️ : toute l'armée. 🏛️ : forum.
 • Les villageois déposent les ressources au forum ou au camp le plus proche : construisez des camps près des forêts et des mines !
