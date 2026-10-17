@@ -41,7 +41,10 @@ Un jeu de stratégie en temps réel inspiré d'**Age of Empires II**, repensé p
 Menu › **👥 Multijoueur**, sur des téléphones connectés au même réseau Wi-Fi :
 
 1. Un joueur choisit son nom et sa civilisation puis **Créer une partie**. Il règle le mode, la taille de la carte, ajoute des IA si besoin, puis **Lancer la partie**.
-2. Les autres ouvrent Multijoueur : la partie apparaît dans **Rejoindre une partie**. Si le réseau bloque la découverte, saisissez l'adresse IP affichée chez l'hôte.
+2. Les autres rejoignent au choix :
+   - en **scannant le QR code** affiché dans le salon de l'hôte, avec l'appareil photo du téléphone (le lien `ageofandroid://join?…` ouvre directement le jeu) ou avec Multijoueur › **📷 Scanner** ;
+   - en choisissant la partie dans **Rejoindre une partie** (découverte automatique sur le Wi-Fi) ;
+   - en saisissant l'adresse IP affichée chez l'hôte.
 
 Modes (jusqu'à 4 places, joueurs et IA) :
 
@@ -79,5 +82,5 @@ git tag v0.1.0 && git push origin v0.1.0
 Architecture :
 
 - `game/` : moteur pur Kotlin, testable sur la JVM. `World` (simulation, ordres, combat, brouillard), `GameMap` (grille + A*), `MapGenerator`, `AiPlayer`, `Types` (données d'équilibrage), `Command` (ordres des joueurs), `Snapshot` (synchronisation multijoueur).
-- `net/` : multijoueur. `Link`/`TcpLink` (transport), `Protocol` (messages, salon), `Sessions` (`HostSession`, `GuestSession`), `LanDiscovery` (recherche des parties en mDNS).
+- `net/` : multijoueur. `Link`/`TcpLink` (transport), `Protocol` (messages, salon), `Sessions` (`HostSession`, `GuestSession`), `LanDiscovery` (recherche des parties en mDNS), `JoinLink` (lien des QR codes).
 - `ui/` : Compose. `GameController` (caméra, sélection, entrées), `GameRenderer` (rendu isométrique sur Canvas : terrain et brouillard en textures pivotées à 45°), `Hud`, `GameScreen` (boucle `withFrameNanos` + gestes), `App` (menu).

@@ -53,11 +53,15 @@ import com.ghostwan.ageofandroid.net.FoundGame
 import com.ghostwan.ageofandroid.net.GameMode
 import com.ghostwan.ageofandroid.net.GuestSession
 import com.ghostwan.ageofandroid.net.HostSession
+import com.ghostwan.ageofandroid.net.JoinLink
 import com.ghostwan.ageofandroid.net.LanDiscovery
 import com.ghostwan.ageofandroid.net.Lobby
 import com.ghostwan.ageofandroid.net.MAX_SEATS
 import com.ghostwan.ageofandroid.net.SeatKind
 import com.ghostwan.ageofandroid.net.TcpLink
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,6 +78,9 @@ fun MultiplayerScreen(
     onBack: () -> Unit,
     onHosted: (HostSession) -> Unit,
     onJoined: (GuestSession) -> Unit,
+    /** Link from a QR code scanned with the phone's camera app, joined right away. */
+    pendingJoin: JoinLink? = null,
+    onPendingJoinHandled: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
@@ -93,21 +100,52 @@ fun MultiplayerScreen(
 
     fun saveProfile() = prefs.edit().putString("name", name.trim()).putInt("civ", civ.ordinal).apply()
 
-    fun join(host: String, port: Int) {
+    /** Tries each address of the host in turn (a phone can have several, e.g. Wi-Fi and hotspot). */
+    fun join(target: JoinLink) {
         if (busy) return
         saveProfile()
         busy = true
         error = null
         scope.launch {
-            try {
-                val link = withContext(Dispatchers.IO) { TcpLink.connect(host, port) }
-                prefs.edit().putString("lastHost", host).apply()
-                onJoined(GuestSession(link, name.trim().ifBlank { "Joueur" }, civ))
-            } catch (e: Exception) {
-                error = "Impossible de rejoindre $host : vérifiez que les deux téléphones sont sur le même Wi-Fi."
-            } finally {
-                busy = false
+            var link: TcpLink? = null
+            for (host in target.hosts) {
+                link = withContext(Dispatchers.IO) {
+                    try {
+                        TcpLink.connect(host, target.port)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                if (link != null) {
+                    prefs.edit().putString("lastHost", if (target.port == DEFAULT_PORT) host else "$host:${target.port}").apply()
+                    break
+                }
             }
+            busy = false
+            if (link != null) {
+                onJoined(GuestSession(link, name.trim().ifBlank { "Joueur" }, civ))
+            } else {
+                val who = target.name.ifEmpty { target.hosts.first() }
+                error = "Impossible de rejoindre $who : vérifiez que les deux téléphones sont sur le même Wi-Fi."
+            }
+        }
+    }
+
+    fun scan() {
+        error = null
+        val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+        GmsBarcodeScanning.getClient(context, options).startScan()
+            .addOnSuccessListener { code ->
+                val target = code.rawValue?.let { JoinLink.parse(it) }
+                if (target != null) join(target) else error = "Ce QR code n'est pas une partie Age of Android."
+            }
+            .addOnFailureListener { error = "Scanner indisponible sur ce téléphone : saisissez l'adresse de l'hôte." }
+    }
+
+    LaunchedEffect(pendingJoin) {
+        if (pendingJoin != null) {
+            join(pendingJoin)
+            onPendingJoinHandled()
         }
     }
 
@@ -135,6 +173,7 @@ fun MultiplayerScreen(
         Spacer(Modifier.width(16.dp))
         MpPanel(Modifier.weight(1f)) {
             Text("Rejoindre une partie", color = BorderGold, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            MenuButton(if (busy) "⏳  Connexion…" else "📷  Scanner le QR code de l'hôte") { if (!busy) scan() }
             if (games.isEmpty()) {
                 Text(
                     if (discovery != null) "🔎 Recherche des parties sur le Wi-Fi…" else "Recherche indisponible : saisissez l'adresse de l'hôte.",
@@ -148,7 +187,7 @@ fun MultiplayerScreen(
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0xFF3A2A18))
                         .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
-                        .clickable(enabled = !busy) { join(g.host, g.port) }
+                        .clickable(enabled = !busy) { join(JoinLink(listOf(g.host), g.port, g.name)) }
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -166,8 +205,7 @@ fun MultiplayerScreen(
                     MpTextField(address, { address = it.trim() }, "Adresse IP (ex. 192.168.1.20)", KeyboardType.Uri)
                 }
                 MenuButton(if (busy) "…" else "Rejoindre") {
-                    val (host, port) = parseAddress(address)
-                    if (host.isNotEmpty()) join(host, port)
+                    JoinLink.parse(address)?.let { join(it) }
                 }
             }
         }
@@ -181,17 +219,16 @@ private fun createHost(name: String, civ: Civ): HostSession = try {
     HostSession(name, civ, 0)
 }
 
-/** "192.168.1.20" or "192.168.1.20:47821". */
-internal fun parseAddress(text: String): Pair<String, Int> {
-    val t = text.trim()
-    val i = t.lastIndexOf(':')
-    if (i > 0) t.substring(i + 1).toIntOrNull()?.let { return Pair(t.substring(0, i), it) }
-    return Pair(t, DEFAULT_PORT)
-}
 
 /** The host's lobby: game settings, seats, then "Lancer". */
 @Composable
-fun HostLobbyScreen(session: HostSession, discovery: LanDiscovery?, onStart: () -> Unit, onCancel: () -> Unit) {
+fun HostLobbyScreen(
+    session: HostSession,
+    discovery: LanDiscovery?,
+    onStart: () -> Unit,
+    onCancel: () -> Unit,
+    localAddresses: () -> List<String> = { LanDiscovery.localAddresses() },
+) {
     var version by remember { mutableIntStateOf(0) }
     LaunchedEffect(session) {
         while (true) {
@@ -207,16 +244,27 @@ fun HostLobbyScreen(session: HostSession, discovery: LanDiscovery?, onStart: () 
     BackHandler(onBack = onCancel)
     version // read to refresh on lobby changes
     val lobby = session.lobby
-    val addresses = remember { LanDiscovery.localAddresses() }
+    val addresses = remember { localAddresses() }
 
     MpBackground {
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Votre partie", color = BorderGold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "Les autres joueurs la trouvent dans Multijoueur › Rejoindre" +
-                    (addresses.firstOrNull()?.let { ", ou saisissent : $it" + if (session.port != DEFAULT_PORT) ":${session.port}" else "" } ?: "."),
-                color = TextDim, fontSize = 12.sp,
-            )
+            if (addresses.isEmpty()) {
+                Text("⚠️ Aucun réseau Wi-Fi détecté : connectez-vous au même Wi-Fi que les autres joueurs.", color = Color(0xFFFF8070), fontSize = 12.sp)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    QrCode(JoinLink(addresses, session.port, lobby.hostName).toString(), 104.dp)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Pour rejoindre, les autres joueurs :", color = TextCream, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("• scannent ce QR code (appareil photo ou Multijoueur › Scanner)", color = TextDim, fontSize = 12.sp)
+                        Text("• ou trouvent la partie dans Multijoueur › Rejoindre", color = TextDim, fontSize = 12.sp)
+                        Text(
+                            "• ou saisissent : ${addresses.first()}" + if (session.port != DEFAULT_PORT) ":${session.port}" else "",
+                            color = TextDim, fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
             Text("Mode", color = BorderGold, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 GameMode.entries.forEach { m -> Chip(m.label, lobby.mode == m, Modifier.weight(1f)) { session.setMode(m) } }

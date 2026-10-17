@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.getValue
@@ -51,12 +52,14 @@ import com.ghostwan.ageofandroid.game.SaveInfo
 import com.ghostwan.ageofandroid.game.World
 import com.ghostwan.ageofandroid.net.GuestSession
 import com.ghostwan.ageofandroid.net.HostSession
+import com.ghostwan.ageofandroid.net.JoinLink
 import com.ghostwan.ageofandroid.net.LanDiscovery
 import java.io.File
 
+/** @param pendingJoin game to join from a scanned QR code (handled from the menus, not mid-game). */
 @Composable
-fun AgeOfAndroidApp() {
-    FontScaleCap { AppContent() }
+fun AgeOfAndroidApp(pendingJoin: JoinLink? = null, onPendingJoinHandled: () -> Unit = {}) {
+    FontScaleCap { AppContent(pendingJoin, onPendingJoinHandled) }
 }
 
 /** Game HUDs have a fixed layout: cap the system font scale so large fonts don't push content out. */
@@ -79,7 +82,7 @@ private sealed interface Screen {
 }
 
 @Composable
-private fun AppContent() {
+private fun AppContent(pendingJoin: JoinLink?, onPendingJoinHandled: () -> Unit) {
     MaterialTheme(colorScheme = darkColorScheme(primary = BorderGold, background = Color(0xFF1B140C))) {
         val context = LocalContext.current
         val density = LocalDensity.current.density
@@ -93,6 +96,10 @@ private fun AppContent() {
         }
         var screen by remember { mutableStateOf<Screen>(Screen.Menu) }
         var error by remember { mutableStateOf<String?>(null) }
+        // A QR code scanned with the camera: go join it, unless a game or lobby is in progress.
+        LaunchedEffect(pendingJoin, screen) {
+            if (pendingJoin != null && screen == Screen.Menu) screen = Screen.MultiplayerHome
+        }
         when (val current = screen) {
             Screen.Menu -> {
                 // Re-read the save summary every time we come back to the menu.
@@ -122,6 +129,8 @@ private fun AppContent() {
                 onBack = { screen = Screen.Menu },
                 onHosted = { screen = Screen.HostLobby(it) },
                 onJoined = { screen = Screen.GuestLobby(it) },
+                pendingJoin = pendingJoin,
+                onPendingJoinHandled = onPendingJoinHandled,
             )
             is Screen.HostLobby -> HostLobbyScreen(
                 current.session, discovery,

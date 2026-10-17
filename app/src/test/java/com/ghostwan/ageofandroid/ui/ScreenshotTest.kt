@@ -254,7 +254,7 @@ class ScreenshotTest {
             host.addAi()
             host.setMode(com.ghostwan.ageofandroid.net.GameMode.COOP)
             var started = false
-            compose.runOnUiThread { compose.activity.setContent { FontScaleCap { HostLobbyScreen(host, null, onStart = { started = true }, onCancel = {}) } } }
+            compose.runOnUiThread { compose.activity.setContent { FontScaleCap { HostLobbyScreen(host, null, onStart = { started = true }, onCancel = {}, localAddresses = { listOf("192.168.1.20") }) } } }
             compose.waitForIdle()
             compose.onNodeWithText("Pixel", substring = true).assertExists()
             capture("mp_host_lobby")

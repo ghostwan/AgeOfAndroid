@@ -12,8 +12,8 @@ android {
         applicationId = "com.ghostwan.ageofandroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.4.0"
+        versionCode = 13
+        versionName = "0.4.1"
     }
 
     signingConfigs {
@@ -66,6 +66,9 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.foundation)
     implementation(libs.androidx.material3)
+    // Multiplayer QR codes: generation (ZXing) and scanning (Google code scanner, no camera permission).
+    implementation(libs.zxing.core)
+    implementation(libs.play.services.code.scanner)
     implementation(libs.androidx.ui.tooling.preview)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
