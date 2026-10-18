@@ -1,5 +1,6 @@
 package com.ghostwan.ageofandroid.ui
 
+import com.ghostwan.ageofandroid.BuildConfig
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.activity.ComponentActivity
@@ -46,6 +47,14 @@ class ScreenshotTest {
     fun menu() {
         compose.setContent { MenuScreen(onStart = {}) }
         capture("menu")
+    }
+
+    @Test
+    fun menuChangelog() {
+        compose.setContent { MenuScreen(onStart = {}) }
+        compose.onNodeWithText("Nouveautés", substring = true).performClick()
+        compose.onNodeWithText("v${BuildConfig.VERSION_NAME} (installée)", substring = true).assertExists()
+        capture("menu_changelog")
     }
 
     @Test

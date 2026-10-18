@@ -217,6 +217,7 @@ fun MenuScreen(
     var difficulty by rememberSaveable { mutableStateOf(Difficulty.NORMAL) }
     var mapSize by rememberSaveable { mutableStateOf(72) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
+    var showNews by rememberSaveable { mutableStateOf(false) }
 
     Box(
         Modifier
@@ -237,6 +238,18 @@ fun MenuScreen(
                     fontFamily = FontFamily.Serif,
                 )
                 Text("Bâtissez un empire, de l'Âge sombre à l'Âge impérial", color = TextDim, fontSize = 14.sp)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "$APP_VERSION  •  " + if (showNews) "✖ Fermer les nouveautés" else "📜 Nouveautés",
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            showNews = !showNews
+                            showHelp = false
+                        }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    color = BorderGold, fontSize = 13.sp,
+                )
                 Spacer(Modifier.height(24.dp))
                 if (save != null) {
                     MenuButton("▶  Continuer") { onContinue() }
@@ -264,7 +277,10 @@ fun MenuScreen(
                         onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis()))
                     }
                     MenuButton("👥  Multijoueur", onClick = onMultiplayer)
-                    MenuButton(if (showHelp) "✖  Fermer l'aide" else "📖  Comment jouer") { showHelp = !showHelp }
+                    MenuButton(if (showHelp) "✖  Fermer l'aide" else "📖  Comment jouer") {
+                        showHelp = !showHelp
+                        showNews = false
+                    }
                 }
                 if (save != null) Text("(Nouvelle partie remplacera la sauvegarde)", color = TextDim, fontSize = 11.sp)
             }
@@ -280,7 +296,10 @@ fun MenuScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (showHelp) {
+                if (showNews) {
+                    Text("Nouveautés", color = BorderGold, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    ChangelogList()
+                } else if (showHelp) {
                     Text("Comment jouer", color = BorderGold, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(HELP_TEXT, fontSize = 13.sp)
                 } else {

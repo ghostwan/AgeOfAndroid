@@ -902,6 +902,7 @@ fun PauseMenu(c: GameController, onResume: () -> Unit, onSave: (() -> Boolean)?,
                 )
             }
             Text(HELP_TEXT, color = TextCream, fontSize = 13.sp)
+            Text("Age of Android $APP_VERSION", color = TextDim, fontSize = 11.sp)
         }
     }
 }
