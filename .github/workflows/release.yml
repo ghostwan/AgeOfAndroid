@@ -1,12 +1,12 @@
 name: Release
 
-# Publishes the APK as a GitHub release named after versionName (app/build.gradle.kts).
-# Runs on tags, on pushes to master / claude branches (the release is updated in place until
-# versionName is bumped), or manually.
+# On every push to master: runs the tests, and when versionName (app/build.gradle.kts) has no
+# GitHub release yet, builds the APK and publishes release v<versionName> with the notes of that
+# version from ui/Changelog.kt. Pushing without bumping the version only runs the tests.
+# "Run workflow" (manual) republishes the current version even if it already exists.
 on:
   push:
-    branches: [master, main, "claude/**"]
-    tags: ["v*"]
+    branches: [master, main]
   workflow_dispatch:
 
 permissions:
@@ -28,23 +28,52 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Version
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          version=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]] && gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $tag already exists: tests only."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=v$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Tests
+        run: ./gradlew :app:testDebugUnitTest
       - name: Build APK
+        if: steps.version.outputs.publish == 'true'
         run: |
-          ./gradlew :app:testDebugUnitTest :app:assembleRelease
+          ./gradlew :app:assembleRelease
           cp app/build/outputs/apk/release/app-release.apk AgeOfAndroid-${{ steps.version.outputs.tag }}.apk
+      - name: Release notes
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          python3 - "${{ steps.version.outputs.version }}" > notes.md <<'EOF'
+          import re, sys
+          version = sys.argv[1]
+          src = open("app/src/main/java/com/ghostwan/ageofandroid/ui/Changelog.kt", encoding="utf-8").read()
+          # Text from this version's Release( up to the next one (or the end of the list).
+          m = re.search(r'Release\(\s*"' + re.escape(version) + r'"(.*?)(?=\n\s*Release\(|\n\)\n)', src, re.S)
+          changes = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))[1:] if m else []
+          if changes:
+              print("## Nouveautés\n")
+              for c in changes:
+                  print("- " + c)
+              print()
+          print("## Installation\n")
+          print("Téléchargez le fichier `.apk` ci-dessous depuis le téléphone (avec Chrome), ouvrez-le et")
+          print("autorisez l'installation d'applications inconnues si Android le demande. Android 8.0+.")
+          print("La mise à jour s'installe par-dessus la version précédente.")
+          EOF
+          cat notes.md
       - uses: softprops/action-gh-release@v2
+        if: steps.version.outputs.publish == 'true'
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: Age of Android ${{ steps.version.outputs.tag }}
           files: AgeOfAndroid-${{ steps.version.outputs.tag }}.apk
-          body: |
-            APK à installer directement sur un téléphone Android 8.0+ :
-            téléchargez le fichier `.apk` ci-dessous depuis le téléphone, ouvrez-le et autorisez
-            l'installation d'applications inconnues si Android le demande.
+          body_path: notes.md
