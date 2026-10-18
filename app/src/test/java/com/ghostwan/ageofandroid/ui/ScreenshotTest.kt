@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.getBoundsInRoot
 import com.ghostwan.ageofandroid.game.SaveGame
 import com.ghostwan.ageofandroid.game.GameConfig
+import com.ghostwan.ageofandroid.game.MapType
+import com.ghostwan.ageofandroid.game.Terrain
 import com.ghostwan.ageofandroid.game.World
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -47,6 +49,38 @@ class ScreenshotTest {
     fun menu() {
         compose.setContent { MenuScreen(onStart = {}) }
         capture("menu")
+    }
+
+    @Test
+    fun mapHighlands() = mapType(MapType.HIGHLANDS, Terrain.MOUNTAIN)
+
+    @Test
+    fun mapCanyons() = mapType(MapType.CANYONS, Terrain.CANYON)
+
+    @Test
+    fun mapLakes() = mapType(MapType.LAKES, Terrain.WATER)
+
+    private fun mapType(type: MapType, terrain: Terrain) {
+        run {
+            compose.mainClock.autoAdvance = false
+            val world = World(GameConfig(opponents = 1, mapSize = 72, seed = 4L, mapType = type))
+            world.revealAll = true
+            world.updateFog()
+            val controller = GameController(world, 2f)
+            compose.setContent { GameScreen(controller, onQuit = {}) }
+            repeat(5) { compose.mainClock.advanceTimeBy(100) }
+            val view = compose.activity.window.decorView
+            val me = world.players[0]
+            // Frame the base and the nearest obstacle.
+            val i = world.map.terrain.indices.filter { world.map.terrain[it] == terrain }
+                .minBy { kotlin.math.hypot((it % 72 - me.startX).toDouble(), (it / 72 - me.startY).toDouble()) }
+            val cx = (me.startX + i % 72) / 2f
+            val cy = (me.startY + i / 72) / 2f
+            controller.camera.zoomAt(0.7f, view.width / 2f, view.height / 2f)
+            controller.camera.centerOn(cx, cy, view.width.toFloat(), view.height.toFloat())
+            repeat(5) { compose.mainClock.advanceTimeBy(100) }
+            capture("map_${type.name.lowercase()}")
+        }
     }
 
     @Test

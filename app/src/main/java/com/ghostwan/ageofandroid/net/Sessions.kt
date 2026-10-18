@@ -4,6 +4,7 @@ import com.ghostwan.ageofandroid.game.Civ
 import com.ghostwan.ageofandroid.game.Command
 import com.ghostwan.ageofandroid.game.Difficulty
 import com.ghostwan.ageofandroid.game.GameConfig
+import com.ghostwan.ageofandroid.game.MapType
 import com.ghostwan.ageofandroid.game.SaveGame
 import com.ghostwan.ageofandroid.game.SnapshotReader
 import com.ghostwan.ageofandroid.game.SnapshotWriter
@@ -51,6 +52,7 @@ class HostSession(hostName: String, hostCiv: Civ, port: Int = DEFAULT_PORT) : Ne
 
     fun setMode(mode: GameMode) = updateLobby(lobby.copy(mode = mode))
     fun setMapSize(size: Int) = updateLobby(lobby.copy(mapSize = size))
+    fun setMapType(t: MapType) = updateLobby(lobby.copy(mapType = t))
     fun setDifficulty(d: Difficulty) = updateLobby(lobby.copy(difficulty = d))
     fun setHostCiv(civ: Civ) = updateLobby(lobby.copy(seats = lobby.seats.map { if (it.kind == SeatKind.HOST) it.copy(civ = civ) else it }))
 
@@ -83,7 +85,7 @@ class HostSession(hostName: String, hostCiv: Civ, port: Int = DEFAULT_PORT) : Ne
         val host = lobby.seats.first { it.kind == SeatKind.HOST }
         val config = GameConfig(
             civ = host.civ, opponents = lobby.seats.size - 1, difficulty = lobby.difficulty,
-            mapSize = lobby.mapSize, seed = seed, slots = lobby.toSlots(),
+            mapSize = lobby.mapSize, seed = seed, slots = lobby.toSlots(), mapType = lobby.mapType,
         )
         val w = World(config)
         w.viewer = lobby.seats.indexOf(host)

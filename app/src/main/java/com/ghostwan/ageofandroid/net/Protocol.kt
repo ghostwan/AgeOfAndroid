@@ -2,6 +2,7 @@ package com.ghostwan.ageofandroid.net
 
 import com.ghostwan.ageofandroid.game.Civ
 import com.ghostwan.ageofandroid.game.Difficulty
+import com.ghostwan.ageofandroid.game.MapType
 import com.ghostwan.ageofandroid.game.PlayerSlot
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -48,7 +49,7 @@ object Msg {
 }
 
 /** Bump when messages or anything they encode (enums, snapshot layout) change. */
-const val PROTOCOL_VERSION = 1
+const val PROTOCOL_VERSION = 2
 
 const val DEFAULT_PORT = 47820
 const val MAX_SEATS = 4
@@ -69,6 +70,7 @@ data class Lobby(
     val mapSize: Int = 72,
     val difficulty: Difficulty = Difficulty.NORMAL,
     val seats: List<Seat> = emptyList(),
+    val mapType: MapType = MapType.ARABIA,
 ) {
     val humans get() = seats.count { it.kind != SeatKind.AI }
     val ais get() = seats.count { it.kind == SeatKind.AI }
@@ -94,6 +96,7 @@ data class Lobby(
         d.writeByte(mode.ordinal)
         d.writeShort(mapSize)
         d.writeByte(difficulty.ordinal)
+        d.writeByte(mapType.ordinal)
         d.writeByte(seats.size)
         seats.forEach {
             d.writeUTF(it.name)
@@ -109,6 +112,7 @@ data class Lobby(
             mode = GameMode.entries[d.readByte().toInt()],
             mapSize = d.readShort().toInt(),
             difficulty = Difficulty.entries[d.readByte().toInt()],
+            mapType = MapType.entries[d.readByte().toInt()],
             seats = List(d.readByte().toInt()) {
                 Seat(d.readUTF(), Civ.entries[d.readByte().toInt()], SeatKind.entries[d.readByte().toInt()], d.readInt())
             },

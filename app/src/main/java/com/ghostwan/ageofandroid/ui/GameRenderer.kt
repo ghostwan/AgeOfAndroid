@@ -49,6 +49,20 @@ class GameRenderer(private val c: GameController) {
     private val path = Path()
     private val drawList = ArrayList<Entity>(512)
 
+    /** Mountain tiles in drawing order (back to front), and how many mountain neighbours each has. */
+    private val mountains: IntArray = (0 until n * n).filter { world.map.terrain[it] == Terrain.MOUNTAIN }
+        .sortedBy { it % n + it / n }.toIntArray()
+    private val mountainMass = IntArray(n * n).also { mass ->
+        for (i in mountains) {
+            val x = i % n
+            val y = i / n
+            for (dy in -1..1) for (dx in -1..1) {
+                if ((dx != 0 || dy != 0) && world.map.inBounds(x + dx, y + dy) && world.map.terrainAt(x + dx, y + dy) == Terrain.MOUNTAIN) mass[i]++
+            }
+        }
+    }
+    private val peaks = IntArray(mountains.size)
+
     // ------------------------------------------------------------------ Terrain & fog textures
 
     private fun buildTerrain(): ImageBitmap {
@@ -63,11 +77,21 @@ class GameRenderer(private val c: GameController) {
                 Terrain.DIRT -> 0x9A7B4C
                 Terrain.SAND -> 0xD6C089
                 Terrain.WATER -> 0x2E6EA6
+                Terrain.MOUNTAIN -> 0x7D705E
+                Terrain.CANYON -> 0x3B2617
             }
             val tileShade = (map.shade[map.idx(tx, ty)] - 4) * 0.012f
+            // Canyon walls: lighter rock along the sides that border walkable ground.
+            fun open(dx: Int, dy: Int) = map.inBounds(tx + dx, ty + dy) && map.terrainAt(tx + dx, ty + dy).walkable
+            val wallW = t == Terrain.CANYON && open(-1, 0)
+            val wallE = t == Terrain.CANYON && open(1, 0)
+            val wallN = t == Terrain.CANYON && open(0, -1)
+            val wallS = t == Terrain.CANYON && open(0, 1)
             for (y in 0 until TEX) for (x in 0 until TEX) {
                 val noise = (rnd.nextFloat() - 0.5f) * if (t == Terrain.WATER) 0.06f else 0.16f
-                val f = 1f + noise + tileShade
+                val edge = TEX / 3
+                val wall = wallW && x < edge || wallE && x >= TEX - edge || wallN && y < edge || wallS && y >= TEX - edge
+                val f = (if (wall) 2.1f else 1f) + noise + tileShade
                 val r = ((base shr 16 and 0xff) * f).toInt().coerceIn(0, 255)
                 val g = ((base shr 8 and 0xff) * f).toInt().coerceIn(0, 255)
                 val b = ((base and 0xff) * f).toInt().coerceIn(0, 255)
@@ -136,13 +160,24 @@ class GameRenderer(private val c: GameController) {
         for (e in drawList) if (e is Building && c.isSelected(e.id)) drawFootprint(e.tx, e.ty, e.size, Color.White, 2f)
         for (e in drawList) if (e is GameUnit && c.isSelected(e.id)) drawSelectionRing(e)
         drawList.sortBy { depth(it) }
+        // Mountains are depth-sorted with the entities so units and trees behind them get hidden.
+        var peakCount = 0
+        for (i in mountains) {
+            val x = i % n + 0.5f
+            val y = i / n + 0.5f
+            if ((world.revealAll || world.explored[i]) && onScreen(x, y)) peaks[peakCount++] = i
+        }
+        var nextPeak = 0
         for (e in drawList) {
+            val d = depth(e)
+            while (nextPeak < peakCount && peaks[nextPeak] % n + peaks[nextPeak] / n + 1f <= d) drawPeak(peaks[nextPeak++])
             when (e) {
                 is ResourceNode -> drawNode(e)
                 is Building -> if (e.type != BuildingType.FARM) drawBuilding(e, time)
                 is GameUnit -> drawUnit(e, time)
             }
         }
+        while (nextPeak < peakCount) drawPeak(peaks[nextPeak++])
         // Projectiles
         for (p in world.projectiles) {
             if (!p.alive || !world.isVisible(p.x, p.y)) continue
@@ -352,6 +387,39 @@ class GameRenderer(private val c: GameController) {
         drawFlag(x, y, b.owner, world.time)
     }
 
+    // ------------------------------------------------------------------ Terrain relief
+
+    /** A rocky peak on a mountain tile; tiles deep inside a range are taller and snowy. */
+    private fun DrawScope.drawPeak(i: Int) {
+        val tx = (i % n).toFloat()
+        val ty = (i / n).toFloat()
+        val v = (i % n * 7349 + i / n * 1931) and 0xff
+        val mass = mountainMass[i]
+        val h = cam.tw * (0.28f + (v % 7) * 0.05f) * (0.7f + mass * 0.08f)
+        val grow = 0.18f
+        val lX = ptX(tx - grow, ty + 1 + grow)
+        val lY = ptY(tx - grow, ty + 1 + grow)
+        val bX = ptX(tx + 1 + grow, ty + 1 + grow)
+        val bY = ptY(tx + 1 + grow, ty + 1 + grow)
+        val rX = ptX(tx + 1 + grow, ty - grow)
+        val rY = ptY(tx + 1 + grow, ty - grow)
+        val tX = ptX(tx - grow, ty - grow)
+        val tY = ptY(tx - grow, ty - grow)
+        val ax = ptX(tx + 0.5f, ty + 0.5f) + ((v shr 3) % 7 - 3) * cam.tw * 0.03f
+        val ay = ptY(tx + 0.5f, ty + 0.5f) - h
+        poly(Color(0xFF948A78), lX, lY, tX, tY, ax, ay)
+        poly(Color(0xFF857B6A), tX, tY, rX, rY, ax, ay)
+        poly(Color(0xFF6E6352), lX, lY, bX, bY, ax, ay)
+        poly(Color(0xFF52493C), bX, bY, rX, rY, ax, ay)
+        if (mass == 8 && v % 3 != 0) {
+            // Snow cap: the top third of the faces.
+            val k = 0.32f
+            fun mix(a: Float, b: Float) = b + (a - b) * k
+            poly(Color(0xFFF2F4F6), mix(lX, ax), mix(lY, ay), mix(bX, ax), mix(bY, ay), ax, ay)
+            poly(Color(0xFFCDD3DA), mix(bX, ax), mix(bY, ay), mix(rX, ax), mix(rY, ay), ax, ay)
+        }
+    }
+
     // ------------------------------------------------------------------ Resources
 
     private fun DrawScope.drawNode(nd: ResourceNode) {
@@ -400,6 +468,23 @@ class GameRenderer(private val c: GameController) {
                 poly(mid, x - 4 * u, y + 2 * u, x + 2 * u, y - 18 * u, x + 12 * u, y - 12 * u, x + 15 * u, y + 1 * u)
                 poly(light, x + 2 * u, y - 18 * u, x + 8 * u, y - 15 * u, x + 4 * u, y - 9 * u)
                 if (gold) drawCircle(Color(0xFFFFF2A8), 1.8f * u, Offset(x - 6 * u, y - 8 * u))
+            }
+            NodeKind.FISH -> {
+                // Ripples and a few fish circling under the surface.
+                val t = world.time + nd.variant
+                drawOval(Color(0x55BFE4FF), Offset(x - 16 * u, y - 6 * u), Size(32 * u, 12 * u), style = Stroke(1.5f * u))
+                drawOval(Color(0x33BFE4FF), Offset(x - 10 * u, y - 4 * u), Size(20 * u, 8 * u), style = Stroke(1.2f * u))
+                val count = (nd.amount / nd.maxHp * 3).toInt() + 1
+                for (k in 0 until count) {
+                    val a = t * 0.8f + k * 2.1f
+                    val fx = x + cos(a) * 10 * u
+                    val fy = y + sin(a) * 4 * u
+                    val dir = if (sin(a) > 0) -1f else 1f
+                    val fish = Color(0xFFD8ECF8)
+                    drawOval(fish, Offset(fx - 5.5f * u, fy - 2.2f * u), Size(11 * u, 4.4f * u))
+                    poly(fish, fx - dir * 4.5f * u, fy, fx - dir * 8.5f * u, fy - 3 * u, fx - dir * 8.5f * u, fy + 3 * u)
+                    drawCircle(Color(0xFF1E3A50), 0.9f * u, Offset(fx + dir * 3 * u, fy - 0.5f * u))
+                }
             }
         }
     }

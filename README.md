@@ -9,7 +9,8 @@ Un jeu de stratégie en temps réel inspiré d'**Age of Empires II**, repensé p
 
 ## Contenu
 
-- **4 ressources** : nourriture (baies, fermes ressemées automatiquement), bois, or, pierre. Les villageois récoltent, portent 10 unités (15 avec la Brouette) et déposent au forum ou au camp le plus proche.
+- **4 types de carte** : Arabie (terrain ouvert, quelques lacs), Hautes terres (chaînes de montagnes infranchissables et cols), Canyons (ravins traversés par quelques passages), Grands lacs (un lac poissonneux près de chaque base). Le générateur garantit qu'aucune base n'est coupée des autres par voie de terre.
+- **4 ressources** : nourriture (baies, poissons pêchés depuis la rive, fermes ressemées automatiquement), bois, or, pierre. Les villageois récoltent, portent 10 unités (15 avec la Brouette) et déposent au forum ou au camp le plus proche.
 - **4 âges** : sombre → féodal → châteaux → impérial, avancés depuis le forum.
 - **13 bâtiments** : forum, maison, moulin, camps de bûcherons/mineurs, ferme, caserne, camp de tir, écurie, forge, tour de guet, atelier de siège, merveille.
 - **7 unités** avec un système de contres (armure de mêlée / perçante, bonus) : villageois, milicien, piquier (anti-cavalerie), archer, éclaireur, chevalier, bélier (anti-bâtiments).

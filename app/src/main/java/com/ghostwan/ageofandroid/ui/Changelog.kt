@@ -16,6 +16,14 @@ class Release(val version: String, val date: String, val changes: List<String>)
 /** Newest first. Add an entry with every version bump. */
 val CHANGELOG = listOf(
     Release(
+        "0.5.0", "18/10/2026",
+        listOf(
+            "Nouveaux types de carte : Hautes terres (montagnes infranchissables et cols), Canyons (ravins à traverser par quelques passages) et Grands lacs",
+            "Pêche : les villageois pêchent à la main les poissons proches de la rive",
+            "Le type de carte se choisit dans le menu et dans le salon multijoueur",
+        ),
+    ),
+    Release(
         "0.4.3", "18/10/2026",
         listOf(
             "Numéro de version et liste des nouveautés sur l'écran d'accueil",

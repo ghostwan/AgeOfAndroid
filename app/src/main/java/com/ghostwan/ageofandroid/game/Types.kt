@@ -215,6 +215,9 @@ enum class NodeKind(val label: String, val resource: ResourceType, val amount: I
     BERRIES("Baies", ResourceType.FOOD, 150),
     GOLD("Mine d'or", ResourceType.GOLD, 800),
     STONE("Carrière de pierre", ResourceType.STONE, 350),
+
+    /** Lives on a water tile: fished from the shore by villagers. */
+    FISH("Poissons", ResourceType.FOOD, 200),
 }
 
 enum class Terrain(val walkable: Boolean, val buildable: Boolean) {
@@ -222,4 +225,13 @@ enum class Terrain(val walkable: Boolean, val buildable: Boolean) {
     DIRT(true, true),
     SAND(true, true),
     WATER(false, false),
+    MOUNTAIN(false, false),
+    CANYON(false, false),
+}
+
+enum class MapType(val label: String, val description: String) {
+    ARABIA("Arabie", "Terrain ouvert et quelques lacs poissonneux"),
+    HIGHLANDS("Hautes terres", "Chaînes de montagnes infranchissables et cols étroits à défendre"),
+    CANYONS("Canyons", "Profonds ravins que l'on ne traverse que par quelques passages"),
+    LAKES("Grands lacs", "Beaucoup d'eau et de poissons : un lac près de chaque base"),
 }

@@ -349,6 +349,8 @@ private fun fillMinimap(c: GameController, px: IntArray) {
             Terrain.DIRT -> 0xFF8A6C40.toInt()
             Terrain.SAND -> 0xFFC8B07A.toInt()
             Terrain.WATER -> 0xFF2A5F94.toInt()
+            Terrain.MOUNTAIN -> 0xFF8A7F6C.toInt()
+            Terrain.CANYON -> 0xFF3B2617.toInt()
         }
     }
     for (nd in world.nodes) {
@@ -358,6 +360,7 @@ private fun fillMinimap(c: GameController, px: IntArray) {
             NodeKind.BERRIES -> 0xFFC04050.toInt()
             NodeKind.GOLD -> 0xFFF0C830.toInt()
             NodeKind.STONE -> 0xFFB0B0B0.toInt()
+            NodeKind.FISH -> 0xFF8FD0F0.toInt()
         }
     }
     for (b in world.buildings) {
@@ -527,6 +530,7 @@ private fun SingleSelection(c: GameController, e: Entity) {
                     NodeKind.BERRIES -> "🍇"
                     NodeKind.GOLD -> "💰"
                     NodeKind.STONE -> "⛰️"
+                    NodeKind.FISH -> "🐟"
                 },
                 e.kind.label,
                 "${e.kind.resource.icon} ${e.amount.toInt()} restant(s)",
@@ -917,6 +921,8 @@ const val HELP_TEXT = """Objectif : détruisez tous les bâtiments et unités en
 • Bâtiment sélectionné + toucher la carte : point de ralliement.
 • 💤👷 : villageois inactif suivant. ⚔️ : toute l'armée. 🏛️ : forum.
 • Les villageois déposent les ressources au forum ou au camp le plus proche : construisez des camps près des forêts et des mines !
+• 🐟 Villageois + toucher des poissons proches de la rive : pêche à la main (nourriture déposée au moulin ou au forum).
+• Cartes : Arabie (ouverte), Hautes terres (montagnes infranchissables), Canyons (ravins à traverser par quelques passages), Grands lacs (pêche).
 • Construisez des maisons pour augmenter la population, et passez les âges au forum pour débloquer de nouvelles unités."""
 
 @Composable

@@ -16,7 +16,7 @@ data class SaveInfo(val config: GameConfig, val time: Float, val age: Age, val s
  */
 object SaveGame {
     private const val MAGIC = 0x414F4153 // "AOAS"
-    private const val VERSION = 2 // 2: player teams and viewer
+    private const val VERSION = 3 // 2: player teams and viewer, 3: map type
 
     fun save(world: World, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -33,8 +33,8 @@ object SaveGame {
     fun info(file: File): SaveInfo? = try {
         if (!file.exists()) null else file.inputStream().buffered().use { input ->
             val d = DataInputStream(input)
-            readHeader(d)
-            val config = readConfig(d)
+            val version = readHeader(d)
+            val config = readConfig(d, version)
             val time = d.readFloat()
             val age = Age.entries[d.readInt()]
             SaveInfo(config, time, age, file.lastModified())
@@ -53,6 +53,7 @@ object SaveGame {
         d.writeInt(c.difficulty.ordinal)
         d.writeInt(c.mapSize)
         d.writeLong(c.seed)
+        d.writeInt(c.mapType.ordinal)
         d.writeFloat(world.time)
         d.writeInt(world.human.age.ordinal)
 
@@ -176,7 +177,7 @@ object SaveGame {
     fun read(input: InputStream): World {
         val d = DataInputStream(input)
         val version = readHeader(d)
-        val config = readConfig(d)
+        val config = readConfig(d, version)
         val world = World(config, generate = false)
         world.time = d.readFloat()
         d.readInt() // human age, header only
@@ -288,11 +289,12 @@ object SaveGame {
         return version
     }
 
-    private fun readConfig(d: DataInputStream) = GameConfig(
+    private fun readConfig(d: DataInputStream, version: Int) = GameConfig(
         civ = Civ.entries[d.readInt()],
         opponents = d.readInt(),
         difficulty = Difficulty.entries[d.readInt()],
         mapSize = d.readInt(),
         seed = d.readLong(),
+        mapType = if (version >= 3) MapType.entries[d.readInt()] else MapType.ARABIA,
     )
 }

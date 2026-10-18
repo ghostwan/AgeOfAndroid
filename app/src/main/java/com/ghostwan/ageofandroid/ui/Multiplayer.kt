@@ -274,6 +274,7 @@ fun HostLobbyScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 MP_MAP_SIZES.forEach { (s, label) -> Chip(label, lobby.mapSize == s, Modifier.weight(1f)) { session.setMapSize(s) } }
             }
+            MapTypeChips(lobby.mapType) { session.setMapType(it) }
             if (lobby.ais > 0) {
                 Text("Difficulté des IA", color = BorderGold, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -338,7 +339,7 @@ fun GuestLobbyScreen(session: GuestSession, onPlaying: () -> Unit, onLeave: () -
                 else -> {
                     Text("Partie de ${lobby.hostName}", color = BorderGold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "${lobby.mode.label} • carte ${MP_MAP_SIZES.firstOrNull { it.first == lobby.mapSize }?.second?.lowercase() ?: lobby.mapSize}" +
+                        "${lobby.mode.label} • ${lobby.mapType.label} • carte ${MP_MAP_SIZES.firstOrNull { it.first == lobby.mapSize }?.second?.lowercase() ?: lobby.mapSize}" +
                             if (lobby.ais > 0) " • IA ${lobby.difficulty.label.lowercase()}" else "",
                         color = TextDim, fontSize = 13.sp,
                     )

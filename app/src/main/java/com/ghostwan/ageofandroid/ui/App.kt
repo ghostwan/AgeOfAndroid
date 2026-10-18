@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.ghostwan.ageofandroid.game.Civ
 import com.ghostwan.ageofandroid.game.Difficulty
 import com.ghostwan.ageofandroid.game.GameConfig
+import com.ghostwan.ageofandroid.game.MapType
 import com.ghostwan.ageofandroid.game.SaveGame
 import com.ghostwan.ageofandroid.game.SaveInfo
 import com.ghostwan.ageofandroid.game.World
@@ -216,6 +217,7 @@ fun MenuScreen(
     var opponents by rememberSaveable { mutableStateOf(1) }
     var difficulty by rememberSaveable { mutableStateOf(Difficulty.NORMAL) }
     var mapSize by rememberSaveable { mutableStateOf(72) }
+    var mapType by rememberSaveable { mutableStateOf(MapType.ARABIA) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
     var showNews by rememberSaveable { mutableStateOf(false) }
 
@@ -254,7 +256,7 @@ fun MenuScreen(
                 if (save != null) {
                     MenuButton("▶  Continuer") { onContinue() }
                     Text(
-                        "${save.config.civ.label} contre ${save.config.opponents} IA (${save.config.difficulty.label.lowercase()}) • " +
+                        "${save.config.civ.label} contre ${save.config.opponents} IA (${save.config.difficulty.label.lowercase()}) • ${save.config.mapType.label} • " +
                             "${formatTime(save.time)} • ${save.age.label}",
                         color = TextDim, fontSize = 12.sp,
                     )
@@ -274,7 +276,7 @@ fun MenuScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     MenuButton(if (save != null) "⚔️  Nouvelle partie" else "⚔️  Jouer") {
-                        onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis()))
+                        onStart(GameConfig(civ, opponents, difficulty, mapSize, System.currentTimeMillis(), mapType = mapType))
                     }
                     MenuButton("👥  Multijoueur", onClick = onMultiplayer)
                     MenuButton(if (showHelp) "✖  Fermer l'aide" else "📖  Comment jouer") {
@@ -322,10 +324,23 @@ fun MenuScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         MAP_SIZES.forEach { (s, label) -> Chip(label, mapSize == s, Modifier.weight(1f)) { mapSize = s } }
                     }
+                    MapTypeChips(mapType) { mapType = it }
                 }
             }
         }
     }
+}
+
+/** Map type choice with the selected type's description (solo menu and multiplayer lobby). */
+@Composable
+internal fun MapTypeChips(selected: MapType, onSelect: (MapType) -> Unit) {
+    Text("Type de carte", color = BorderGold, fontWeight = FontWeight.Bold)
+    MapType.entries.chunked(2).forEach { row ->
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            row.forEach { t -> Chip(t.label, selected == t, Modifier.weight(1f)) { onSelect(t) } }
+        }
+    }
+    Text(selected.description, color = TextDim, fontSize = 12.sp)
 }
 
 @Composable

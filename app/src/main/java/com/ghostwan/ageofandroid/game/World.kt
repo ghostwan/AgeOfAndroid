@@ -17,6 +17,7 @@ data class GameConfig(
     val seed: Long = System.currentTimeMillis(),
     /** Multiplayer line-up. Empty for a solo game (player 0 is the human, the others are AIs). */
     val slots: List<PlayerSlot> = emptyList(),
+    val mapType: MapType = MapType.ARABIA,
 )
 
 /** One seat of a multiplayer game: a human (local or remote) or an AI. */
@@ -164,7 +165,13 @@ class World(val config: GameConfig, generate: Boolean = true) {
     }
 
     fun addNode(kind: NodeKind, tx: Int, ty: Int): ResourceNode? {
-        if (!map.inBounds(tx, ty) || !map.passable(tx, ty)) return null
+        if (!map.inBounds(tx, ty)) return null
+        val free = if (kind == NodeKind.FISH) {
+            map.terrainAt(tx, ty) == Terrain.WATER && map.occupant[map.idx(tx, ty)] == -1
+        } else {
+            map.passable(tx, ty)
+        }
+        if (!free) return null
         val n = ResourceNode(nextId++, kind, tx, ty)
         nodes += n
         byId[n.id] = n
@@ -258,6 +265,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             NodeKind.TREE -> if (p.has(Tech.DOUBLE_BIT_AXE)) 0.66f else 0.55f
             NodeKind.GOLD -> if (p.has(Tech.GOLD_MINING)) 0.57f else 0.5f
             NodeKind.STONE -> if (p.has(Tech.GOLD_MINING)) 0.57f else 0.5f
+            NodeKind.FISH -> 0.4f
         }
         if (!p.isHuman) rate *= config.difficulty.gatherBonus
         return rate
