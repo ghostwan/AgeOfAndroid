@@ -21,18 +21,31 @@ class GameMap(val width: Int, val height: Int) {
 
     fun terrainAt(x: Int, y: Int) = terrain[idx(x, y)]
 
-    fun passable(x: Int, y: Int): Boolean =
-        inBounds(x, y) && terrain[idx(x, y)].walkable && occupant[idx(x, y)] == -1
+    /** Free tile for a land unit, or for a ship when [naval] (ships only sail on water). */
+    fun passable(x: Int, y: Int, naval: Boolean = false): Boolean =
+        inBounds(x, y) && occupant[idx(x, y)] == -1 &&
+            if (naval) terrain[idx(x, y)] == Terrain.WATER else terrain[idx(x, y)].walkable
 
-    fun passable(x: Float, y: Float) = passable(floor(x).toInt(), floor(y).toInt())
+    fun passable(x: Float, y: Float, naval: Boolean = false) = passable(floor(x).toInt(), floor(y).toInt(), naval)
 
-    fun canPlace(tx: Int, ty: Int, size: Int): Boolean {
+    fun canPlace(tx: Int, ty: Int, size: Int, onWater: Boolean = false): Boolean {
         for (y in ty until ty + size) for (x in tx until tx + size) {
             if (!inBounds(x, y)) return false
             val i = idx(x, y)
-            if (!terrain[i].buildable || occupant[i] != -1) return false
+            if (occupant[i] != -1) return false
+            if (if (onWater) terrain[i] != Terrain.WATER else !terrain[i].buildable) return false
         }
-        return true
+        if (!onWater) return true
+        // A dock sits in the water against the bank: villagers build it from the land, ships moor
+        // on the water side.
+        var land = false
+        var water = false
+        for (y in ty - 1..ty + size) for (x in tx - 1..tx + size) {
+            if (x in tx until tx + size && y in ty until ty + size) continue
+            if (passable(x, y)) land = true
+            if (passable(x, y, naval = true)) water = true
+        }
+        return land && water
     }
 
     fun setOccupant(tx: Int, ty: Int, size: Int, id: Int) {
@@ -65,6 +78,7 @@ class GameMap(val width: Int, val height: Int) {
         gx: Float,
         gy: Float,
         maxNodes: Int = 6000,
+        naval: Boolean = false,
         isGoal: (Int, Int) -> Boolean,
     ): List<Pair<Int, Int>> {
         lastExpanded = 0
@@ -102,8 +116,8 @@ class GameMap(val width: Int, val height: Int) {
                 val nx = cx + d[0]
                 val ny = cy + d[1]
                 if (!inBounds(nx, ny)) continue
-                if (!passable(nx, ny)) continue
-                if (d[0] != 0 && d[1] != 0 && (!passable(cx + d[0], cy) || !passable(cx, cy + d[1]))) continue
+                if (!passable(nx, ny, naval)) continue
+                if (d[0] != 0 && d[1] != 0 && (!passable(cx + d[0], cy, naval) || !passable(cx, cy + d[1], naval))) continue
                 val ni = idx(nx, ny)
                 if (closedStamp[ni] == gen) continue
                 val ng = gScore[cur] + if (d[0] != 0 && d[1] != 0) 1.4142f else 1f
@@ -125,11 +139,11 @@ class GameMap(val width: Int, val height: Int) {
             c = cameFrom[c]
         }
         result.reverse()
-        return smooth(sx + 0.5f, sy + 0.5f, result)
+        return smooth(sx + 0.5f, sy + 0.5f, result, naval)
     }
 
     /** Removes waypoints that can be skipped with a straight walkable line. */
-    private fun smooth(sx: Float, sy: Float, path: List<Pair<Int, Int>>): List<Pair<Int, Int>> {
+    private fun smooth(sx: Float, sy: Float, path: List<Pair<Int, Int>>, naval: Boolean): List<Pair<Int, Int>> {
         if (path.size < 3) return path
         val out = ArrayList<Pair<Int, Int>>()
         var fromX = sx
@@ -139,7 +153,7 @@ class GameMap(val width: Int, val height: Int) {
             // Look a bounded number of waypoints ahead: trying every remaining one made smoothing
             // quadratic in the path length, the main cost of long paths.
             var j = min(path.size - 1, i + SMOOTH_LOOKAHEAD)
-            while (j > i && !lineWalkable(fromX, fromY, path[j].first + 0.5f, path[j].second + 0.5f)) j--
+            while (j > i && !lineWalkable(fromX, fromY, path[j].first + 0.5f, path[j].second + 0.5f, naval)) j--
             out.add(path[j])
             fromX = path[j].first + 0.5f
             fromY = path[j].second + 0.5f
@@ -148,7 +162,7 @@ class GameMap(val width: Int, val height: Int) {
         return out
     }
 
-    fun lineWalkable(ax: Float, ay: Float, bx: Float, by: Float): Boolean {
+    fun lineWalkable(ax: Float, ay: Float, bx: Float, by: Float, naval: Boolean = false): Boolean {
         val d = dist(ax, ay, bx, by)
         val steps = max(1, (d / 0.2f).toInt())
         for (s in 1 until steps) {
@@ -156,8 +170,8 @@ class GameMap(val width: Int, val height: Int) {
             val px = ax + (bx - ax) * t
             val py = ay + (by - ay) * t
             // Check a small footprint so units don't scrape corners.
-            if (!passable(px, py) || !passable(px + 0.2f, py) || !passable(px - 0.2f, py) ||
-                !passable(px, py + 0.2f) || !passable(px, py - 0.2f)
+            if (!passable(px, py, naval) || !passable(px + 0.2f, py, naval) || !passable(px - 0.2f, py, naval) ||
+                !passable(px, py + 0.2f, naval) || !passable(px, py - 0.2f, naval)
             ) return false
         }
         return true
@@ -172,14 +186,14 @@ class GameMap(val width: Int, val height: Int) {
     private fun encode(f: Float, idx: Int): Long = ((f * 1000).toLong() shl 32) or idx.toLong()
 
     /** Nearest passable tile to (x, y) by spiral search. */
-    fun nearestPassable(x: Int, y: Int, maxRadius: Int = 12): Pair<Int, Int>? {
-        if (passable(x, y)) return Pair(x, y)
+    fun nearestPassable(x: Int, y: Int, maxRadius: Int = 12, naval: Boolean = false): Pair<Int, Int>? {
+        if (passable(x, y, naval)) return Pair(x, y)
         for (r in 1..maxRadius) {
             var best: Pair<Int, Int>? = null
             var bestD = Float.MAX_VALUE
             for (dy in -r..r) for (dx in -r..r) {
                 if (max(abs(dx), abs(dy)) != r) continue
-                if (passable(x + dx, y + dy)) {
+                if (passable(x + dx, y + dy, naval)) {
                     val d = sqrt((dx * dx + dy * dy).toFloat())
                     if (d < bestD) {
                         bestD = d

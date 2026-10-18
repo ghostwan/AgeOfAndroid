@@ -78,7 +78,7 @@ enum class Difficulty(val label: String, val gatherBonus: Float, val firstAttack
 }
 
 enum class Category(val label: String) {
-    VILLAGER("villageois"), INFANTRY("infanterie"), ARCHER("archers"), CAVALRY("cavalerie"), SIEGE("siège"), BUILDING("bâtiments"),
+    VILLAGER("villageois"), INFANTRY("infanterie"), ARCHER("archers"), CAVALRY("cavalerie"), SIEGE("siège"), BUILDING("bâtiments"), SHIP("navires"),
 }
 
 enum class BuildingType(
@@ -96,6 +96,8 @@ enum class BuildingType(
     val los: Int = 4,
     val military: Boolean = false,
     val walkable: Boolean = false,
+    /** Built in the water against the bank (docks). */
+    val onWater: Boolean = false,
     val description: String = "",
 ) {
     TOWN_CENTER(
@@ -123,6 +125,11 @@ enum class BuildingType(
     WONDER(
         "Merveille", "✨", Cost(wood = 1000, gold = 1000, stone = 1000), 180f, 4800, 4, minAge = Age.IMPERIAL,
         description = "Gardez-la debout 3 minutes pour gagner !",
+    ),
+    // Appended after WONDER: saves store building types by ordinal.
+    DOCK(
+        "Port", "⚓", Cost(wood = 150), 35f, 1800, 2, dropSite = setOf(ResourceType.FOOD), los = 6, onWater = true,
+        description = "Se construit dans l'eau, contre la rive. Produit les bateaux de pêche et reçoit leurs poissons.",
     );
 
     val isDropSite get() = dropSite.isNotEmpty()
@@ -183,10 +190,25 @@ enum class UnitType(
         "Bélier", "🐏", Category.SIEGE, Cost(wood = 160, gold = 75), 25f, 175, 2, 0, 180, 0f, 3f, 0.6f, 3,
         BuildingType.SIEGE_WORKSHOP, Age.CASTLE, mapOf(Category.BUILDING to 125),
         description = "Engin de siège lent : dévastateur contre les bâtiments, quasi insensible aux flèches, presque inoffensif contre les unités.",
+    ),
+    FISHING_BOAT(
+        "Bateau de pêche", "⛵", Category.SHIP, Cost(wood = 75), 30f, 60, 0, 0, 4, 0f, 2f, 1.3f, 5,
+        BuildingType.DOCK,
+        description = "Pêche les bancs de poissons, même loin de la rive, plus vite qu'un villageois, et rapporte 15 de nourriture par voyage au port. Ne navigue que sur l'eau.",
     );
 
-    val isMilitary get() = category != Category.VILLAGER
-    val radius get() = if (category == Category.CAVALRY || category == Category.SIEGE) 0.32f else 0.22f
+    val isMilitary get() = attack > 0 && category != Category.VILLAGER
+
+    /** Ships move on water only. */
+    val naval get() = category == Category.SHIP
+
+    /** Units that gather resources (fishing boats only fish). */
+    val gatherer get() = this == VILLAGER || this == FISHING_BOAT
+    val radius get() = when (category) {
+        Category.SHIP -> 0.38f
+        Category.CAVALRY, Category.SIEGE -> 0.32f
+        else -> 0.22f
+    }
 }
 
 enum class Tech(

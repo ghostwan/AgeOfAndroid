@@ -196,7 +196,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             // Push units out of the footprint.
             for (u in units) {
                 if (u.alive && b.contains(floor(u.x).toInt(), floor(u.y).toInt())) {
-                    map.nearestPassable(floor(u.x).toInt(), floor(u.y).toInt())?.let { (px, py) ->
+                    map.nearestPassable(floor(u.x).toInt(), floor(u.y).toInt(), naval = u.type.naval)?.let { (px, py) ->
                         u.x = px + 0.5f
                         u.y = py + 0.5f
                         u.clearPath()
@@ -256,10 +256,29 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     fun buildingAttack(p: Player, t: BuildingType): Int = t.attack + if (p.has(Tech.FLETCHING)) 1 else 0
 
+    fun carryCapacity(p: Player, u: GameUnit) = if (u.type.naval) 15f else p.carryCapacity()
+
+    /** Ships only fish; villagers fish from the bank, so only fish next to free land. */
+    fun canGather(u: GameUnit, target: Entity): Boolean = when {
+        !u.type.gatherer -> false
+        u.type.naval -> target is ResourceNode && target.kind == NodeKind.FISH
+        target is ResourceNode -> target.kind != NodeKind.FISH || fromShore(target)
+        else -> target is Building && target.type == BuildingType.FARM
+    }
+
+    private fun fromShore(n: ResourceNode): Boolean {
+        for (dy in -1..1) for (dx in -1..1) if (map.passable(n.tx + dx, n.ty + dy)) return true
+        return false
+    }
+
+    /** Melee land units can't reach ships. */
+    fun canAttack(u: GameUnit, target: Entity): Boolean =
+        u.type.attack > 0 && !(target is GameUnit && target.type.naval && rangeOf(players[u.owner], u.type) < 1f)
+
     fun farmFood(p: Player) = if (p.has(Tech.HORSE_COLLAR)) 350f else 250f
 
-    fun gatherRate(p: Player, kind: NodeKind?): Float {
-        var rate = when (kind) {
+    fun gatherRate(p: Player, kind: NodeKind?, boat: Boolean = false): Float {
+        var rate = if (boat) 0.6f else when (kind) {
             null -> if (p.has(Tech.HORSE_COLLAR)) 0.46f else 0.42f // farm
             NodeKind.BERRIES -> 0.5f
             NodeKind.TREE -> if (p.has(Tech.DOUBLE_BIT_AXE)) 0.66f else 0.55f
@@ -299,7 +318,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     fun commandAttack(group: List<GameUnit>, target: Entity) {
         group.forEach { u ->
-            if (u.owner == target.owner) return@forEach
+            if (u.owner == target.owner || !canAttack(u, target)) return@forEach
             u.task = Task.ATTACK
             u.targetId = target.id
             u.clearPath()
@@ -308,7 +327,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
     }
 
     fun commandGather(group: List<GameUnit>, target: Entity) {
-        group.filter { it.type == UnitType.VILLAGER }.forEach { u ->
+        group.filter { canGather(it, target) }.forEach { u ->
             u.task = Task.GATHER
             u.targetId = target.id
             u.clearPath()
@@ -325,7 +344,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
     }
 
     fun commandReturn(group: List<GameUnit>, drop: Building? = null) {
-        group.filter { it.type == UnitType.VILLAGER && it.carryAmount > 0 }.forEach { u ->
+        group.filter { it.type.gatherer && it.carryAmount > 0 }.forEach { u ->
             u.task = Task.RETURN
             u.targetId = drop?.id ?: -1
             u.clearPath()
@@ -339,10 +358,17 @@ class World(val config: GameConfig, generate: Boolean = true) {
         when {
             target == null -> commandMove(group, x, y)
             target is ResourceNode -> {
+                if (target.kind == NodeKind.FISH && !fromShore(target) && group.any { it.type == UnitType.VILLAGER }) {
+                    pushEvent("Ces poissons sont trop loin de la rive : construisez un port et des bateaux de pêche", target.x, target.y, to = owner)
+                }
                 commandGather(group, target)
-                commandMove(group.filter { it.type != UnitType.VILLAGER }, x, y)
+                commandMove(group.filter { !canGather(it, target) }, x, y)
             }
             target is Building && target.owner == owner -> {
+                // Fishing boats unload at a dock.
+                group.filter { it.type.naval }.forEach { boat ->
+                    if (boat.carryAmount > 0 && boat.carryType in target.type.dropSite) commandReturn(listOf(boat), target) else commandMove(listOf(boat), x, y)
+                }
                 val villagers = group.filter { it.type == UnitType.VILLAGER }
                 when {
                     !target.complete || needsRepair(target) -> commandBuild(villagers, target)
@@ -358,9 +384,12 @@ class World(val config: GameConfig, generate: Boolean = true) {
                     }
                     else -> commandMove(villagers, x, y)
                 }
-                commandMove(group.filter { it.type != UnitType.VILLAGER }, x, y)
+                commandMove(group.filter { it.type != UnitType.VILLAGER && !it.type.naval }, x, y)
             }
-            isEnemy(owner, target.owner) -> commandAttack(group, target)
+            isEnemy(owner, target.owner) -> {
+                commandAttack(group, target)
+                commandMove(group.filter { !canAttack(it, target) }, x, y)
+            }
             else -> commandMove(group, x, y)
         }
     }
@@ -369,7 +398,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
     fun placeBuilding(playerId: Int, type: BuildingType, tx: Int, ty: Int, builders: List<GameUnit>): Building? {
         val p = players[playerId]
         if (p.age < type.minAge || !canBuild(p, type)) return null
-        if (!map.canPlace(tx, ty, type.size)) return null
+        if (!map.canPlace(tx, ty, type.size, type.onWater)) return null
         if (playerId == viewer && !revealAll && !isAreaExplored(tx, ty, type.size)) return null
         if (!p.res.pay(p.buildingCost(type))) return null
         val b = addBuilding(playerId, type, tx, ty, complete = false)
@@ -385,7 +414,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
     }
 
     fun canPlaceFor(playerId: Int, type: BuildingType, tx: Int, ty: Int): Boolean =
-        map.canPlace(tx, ty, type.size) && (playerId != viewer || revealAll || isAreaExplored(tx, ty, type.size))
+        map.canPlace(tx, ty, type.size, type.onWater) && (playerId != viewer || revealAll || isAreaExplored(tx, ty, type.size))
 
     sealed interface QueueResult {
         data object Ok : QueueResult
@@ -546,7 +575,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
         u.scanTimer -= dt
         if (u.scanTimer > 0f) return
         u.scanTimer = 0.5f
-        findEnemyNear(u.owner, u.x, u.y, u.type.los.toFloat())?.let {
+        findEnemyNear(u.owner, u.x, u.y, u.type.los.toFloat())?.takeIf { canAttack(u, it) }?.let {
             u.task = Task.ATTACK
             u.targetId = it.id
             u.clearPath()
@@ -579,7 +608,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
     private fun interactReach(target: Entity) = if (target is Building && target.type.walkable) 0.35f else 0.85f
 
     private fun updateGather(u: GameUnit, p: Player, dt: Float) {
-        val target = entity(u.targetId)
+        val target = entity(u.targetId)?.takeIf { canGather(u, it) }
         val node = target as? ResourceNode
         val farm = (target as? Building)?.takeIf { it.type == BuildingType.FARM && it.complete && it.owner == u.owner }
         if (node == null && farm == null) {
@@ -605,7 +634,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
         if (target.distanceTo(u.x, u.y) <= reach + 0.15f) {
             u.clearPath()
             faceTowards(u, target.x, target.y)
-            val amount = gatherRate(p, node?.kind) * dt
+            val amount = gatherRate(p, node?.kind, boat = u.type.naval) * dt
             u.carryType = resType
             u.moving = false
             u.animTime += dt
@@ -620,8 +649,8 @@ class World(val config: GameConfig, generate: Boolean = true) {
                 u.carryAmount += taken
                 if (farm.food <= 0.01f) reseedOrRemoveFarm(farm, p)
             }
-            if (u.carryAmount >= p.carryCapacity()) {
-                u.carryAmount = p.carryCapacity()
+            if (u.carryAmount >= carryCapacity(p, u)) {
+                u.carryAmount = carryCapacity(p, u)
                 u.task = Task.RETURN
                 u.targetId = -1
                 u.clearPath()
@@ -668,7 +697,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             return true
         }
         val kind = u.lastGatherKind ?: return false
-        val n = nearestNode(kind, u.lastGatherX, u.lastGatherY, 10f) ?: return false
+        val n = nearestNode(kind, u.lastGatherX, u.lastGatherY, 10f) { canGather(u, it) } ?: return false
         u.targetId = n.id
         u.clearPath()
         return true
@@ -677,11 +706,11 @@ class World(val config: GameConfig, generate: Boolean = true) {
     fun farmTaken(farm: Building, except: GameUnit? = null) =
         units.any { it !== except && it.alive && it.task == Task.GATHER && it.targetId == farm.id }
 
-    fun nearestNode(kind: NodeKind, x: Float, y: Float, maxDist: Float = Float.MAX_VALUE): ResourceNode? {
+    fun nearestNode(kind: NodeKind, x: Float, y: Float, maxDist: Float = Float.MAX_VALUE, accept: (ResourceNode) -> Boolean = { true }): ResourceNode? {
         var best: ResourceNode? = null
         var bestD = maxDist
         for (n in nodes) {
-            if (!n.alive || n.kind != kind) continue
+            if (!n.alive || n.kind != kind || !accept(n)) continue
             val d = dist(x, y, n.x, n.y)
             if (d < bestD) {
                 bestD = d
@@ -691,8 +720,9 @@ class World(val config: GameConfig, generate: Boolean = true) {
         return best
     }
 
-    fun nearestDropSite(owner: Int, type: ResourceType, x: Float, y: Float): Building? =
-        buildings.filter { it.alive && it.owner == owner && it.complete && type in it.type.dropSite }
+    /** Ships only unload at docks. */
+    fun nearestDropSite(owner: Int, type: ResourceType, x: Float, y: Float, naval: Boolean = false): Building? =
+        buildings.filter { it.alive && it.owner == owner && it.complete && type in it.type.dropSite && (!naval || it.type.onWater) }
             .minByOrNull { it.distanceTo(x, y) }
 
     private fun updateReturn(u: GameUnit, p: Player, dt: Float) {
@@ -701,8 +731,8 @@ class World(val config: GameConfig, generate: Boolean = true) {
             resumeGather(u)
             return
         }
-        val drop = (entity(u.targetId) as? Building)?.takeIf { it.owner == u.owner && it.complete && type in it.type.dropSite }
-            ?: nearestDropSite(u.owner, type, u.x, u.y)
+        val drop = (entity(u.targetId) as? Building)?.takeIf { it.owner == u.owner && it.complete && type in it.type.dropSite && (!u.type.naval || it.type.onWater) }
+            ?: nearestDropSite(u.owner, type, u.x, u.y, u.type.naval)
         if (drop == null) {
             u.task = Task.IDLE
             return
@@ -824,7 +854,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             b.type == BuildingType.FARM && !farmTaken(b, u) -> commandGather(listOf(u), b)
             b.type.isDropSite && b.type != BuildingType.TOWN_CENTER -> {
                 val kinds = NodeKind.entries.filter { it.resource in b.type.dropSite }
-                kinds.mapNotNull { nearestNode(it, b.x, b.y, 8f) }.minByOrNull { dist(it.x, it.y, b.x, b.y) }
+                kinds.mapNotNull { nearestNode(it, b.x, b.y, 8f) { n -> canGather(u, n) } }.minByOrNull { dist(it.x, it.y, b.x, b.y) }
                     ?.let { commandGather(listOf(u), it) }
             }
         }
@@ -832,7 +862,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
 
     private fun updateAttack(u: GameUnit, p: Player, dt: Float) {
         val target = entity(u.targetId)
-        if (target == null || target is ResourceNode || !isEnemy(u.owner, target.owner)) {
+        if (target == null || target is ResourceNode || !isEnemy(u.owner, target.owner) || !canAttack(u, target)) {
             u.task = Task.IDLE
             u.targetId = -1
             u.clearPath()
@@ -853,7 +883,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             if (u.scanTimer <= 0f) {
                 u.scanTimer = 0.6f
                 val threat = findEnemyNear(u.owner, u.x, u.y, max(3f, range + 0.5f), includeBuildings = false)
-                if (threat != null) {
+                if (threat != null && canAttack(u, threat)) {
                     u.targetId = threat.id
                     u.clearPath()
                     return
@@ -1010,18 +1040,18 @@ class World(val config: GameConfig, generate: Boolean = true) {
         var best: Pair<Int, Int>? = null
         var bestD = Float.MAX_VALUE
         for (y in b.ty - 1..b.ty + b.size) for (x in b.tx - 1..b.tx + b.size) {
-            if (b.contains(x, y) || !map.passable(x, y)) continue
+            if (b.contains(x, y) || !map.passable(x, y, type.naval)) continue
             val d = dist(x + 0.5f, y + 0.5f, aimX, aimY)
             if (d < bestD) {
                 bestD = d
                 best = Pair(x, y)
             }
         }
-        val spot = best ?: map.nearestPassable(b.tx + b.size, b.ty + b.size) ?: return
+        val spot = best ?: map.nearestPassable(b.tx + b.size, b.ty + b.size, naval = type.naval) ?: return
         val u = spawnUnit(b.owner, type, spot.first + 0.5f, spot.second + 0.5f)
         if (hasRally) {
             val rallyTarget = entityAtTile(floor(b.rallyX).toInt(), floor(b.rallyY).toInt())
-            if (type == UnitType.VILLAGER && rallyTarget != null) {
+            if (type.gatherer && rallyTarget != null) {
                 commandSmart(listOf(u), b.rallyX, b.rallyY, rallyTarget)
             } else {
                 commandMove(listOf(u), b.rallyX, b.rallyY)
@@ -1079,8 +1109,9 @@ class World(val config: GameConfig, generate: Boolean = true) {
         var ty = floor(y).toInt().coerceIn(0, map.height - 1)
         var fx = x.coerceIn(0.1f, map.width - 0.1f)
         var fy = y.coerceIn(0.1f, map.height - 0.1f)
-        if (!map.passable(tx, ty)) {
-            val np = map.nearestPassable(tx, ty) ?: return
+        val naval = u.type.naval
+        if (!map.passable(tx, ty, naval)) {
+            val np = map.nearestPassable(tx, ty, naval = naval) ?: return
             tx = np.first
             ty = np.second
             fx = tx + 0.5f
@@ -1088,14 +1119,14 @@ class World(val config: GameConfig, generate: Boolean = true) {
         }
         u.destX = fx
         u.destY = fy
-        if (map.lineWalkable(u.x, u.y, fx, fy)) {
+        if (map.lineWalkable(u.x, u.y, fx, fy, naval)) {
             u.path = listOf(Waypoint(fx, fy))
             u.pathIndex = 0
             return
         }
         val sx = floor(u.x).toInt()
         val sy = floor(u.y).toInt()
-        val tiles = map.findPath(sx, sy, tx + 0.5f, ty + 0.5f) { cx, cy -> cx == tx && cy == ty }
+        val tiles = map.findPath(sx, sy, tx + 0.5f, ty + 0.5f, naval = naval) { cx, cy -> cx == tx && cy == ty }
         val wps = ArrayList<Waypoint>(tiles.size + 1)
         tiles.forEach { wps += Waypoint(it.first + 0.5f, it.second + 0.5f) }
         val reached = tiles.isEmpty() && sx == tx && sy == ty || tiles.lastOrNull()?.let { it.first == tx && it.second == ty } == true
@@ -1119,7 +1150,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             }
             // Nothing in the way: walk straight there, no search needed (the common case in fights).
             val (ax, ay) = approachPoint(target, u.x, u.y, reach)
-            if (dist(u.x, u.y, ax, ay) < DIRECT_RANGE && map.lineWalkable(u.x, u.y, ax, ay)) {
+            if (dist(u.x, u.y, ax, ay) < DIRECT_RANGE && map.lineWalkable(u.x, u.y, ax, ay, u.type.naval)) {
                 u.path = listOf(Waypoint(ax, ay))
                 u.pathIndex = 0
                 u.repathTimer = 0.5f
@@ -1129,7 +1160,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             if (pathBudget <= 0) return // try again next tick
             val sx = floor(u.x).toInt()
             val sy = floor(u.y).toInt()
-            val tiles = map.findPath(sx, sy, target.x, target.y, maxNodes = min(MAX_PATH_NODES, pathBudget)) { cx, cy ->
+            val tiles = map.findPath(sx, sy, target.x, target.y, maxNodes = min(MAX_PATH_NODES, pathBudget), naval = u.type.naval) { cx, cy ->
                 target.distanceTo(cx + 0.5f, cy + 0.5f) <= reach
             }
             pathBudget -= map.lastExpanded
@@ -1174,7 +1205,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
         val step = min(d, speedOf(players[u.owner], u.type) * dt)
         val nx = u.x + (x - u.x) / d * step
         val ny = u.y + (y - u.y) / d * step
-        if (map.passable(nx, ny) || target is Building && target.type.walkable) {
+        if (map.passable(nx, ny, u.type.naval) || target is Building && target.type.walkable) {
             u.x = nx
             u.y = ny
             u.moving = true
@@ -1253,7 +1284,7 @@ class World(val config: GameConfig, generate: Boolean = true) {
             val strength = if (u.moving) 1.2f else 0.8f
             val nx = u.x + pushX * strength * dt
             val ny = u.y + pushY * strength * dt
-            if (map.passable(nx, ny) || isOnWalkableBuilding(nx, ny)) {
+            if (map.passable(nx, ny, u.type.naval) || !u.type.naval && isOnWalkableBuilding(nx, ny)) {
                 u.x = nx.coerceIn(0.05f, map.width - 0.05f)
                 u.y = ny.coerceIn(0.05f, map.height - 0.05f)
             }

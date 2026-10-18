@@ -505,6 +505,7 @@ class GameRenderer(private val c: GameController) {
             BuildingType.WATCH_TOWER -> tw * 1.5f
             BuildingType.SIEGE_WORKSHOP -> tw * 0.5f
             BuildingType.WONDER -> tw * 0.6f
+            BuildingType.DOCK -> tw * 0.12f
         }
     }
 
@@ -669,9 +670,30 @@ class GameRenderer(private val c: GameController) {
                 drawPyramidRoof(tx + 1.35f, ty + 1.35f, s - 2.7f, h + fullH * 0.1f, cam.tw * 0.8f, gold, goldD)
                 if (b.wonderTimer > 0f) flagOn(b, h + cam.tw * 0.9f, time)
             }
+            BuildingType.DOCK -> drawDock(b, tx, ty, s, fullH, woodL, woodR, time)
             BuildingType.FARM -> Unit
         }
         if (b.hp < b.maxHp * 0.5f) drawFire(b, fullH, time)
+    }
+
+    /** Wooden pier on stilts with a small boathouse and a moored crate of fish. */
+    private fun DrawScope.drawDock(b: Building, tx: Float, ty: Float, s: Float, h: Float, woodL: Color, woodR: Color, time: Float) {
+        val post = Color(0xFF4A3420)
+        for ((px, py) in listOf(tx + 0.1f to ty + s - 0.1f, tx + s - 0.1f to ty + s - 0.1f, tx + s - 0.1f to ty + 0.1f, tx + s / 2f to ty + s - 0.1f)) {
+            drawLine(post, Offset(ptX(px, py), ptY(px, py) + cam.tw * 0.06f), Offset(ptX(px, py), ptY(px, py) - h), strokeWidth = max(2f, cam.tw / 22f))
+        }
+        drawBox(tx, ty, s, h, woodL, woodR, Color(0xFFB8925E), inset = 0.04f)
+        // Planks
+        for (i in 1 until 6) {
+            val f = tx + s * i / 6f
+            drawLine(Color(0xFF8A6A40), Offset(ptX(f, ty + 0.05f), ptY(f, ty + 0.05f) - h), Offset(ptX(f, ty + s - 0.05f), ptY(f, ty + s - 0.05f) - h), strokeWidth = max(1f, cam.tw / 48f))
+        }
+        // Boathouse at the back
+        drawBox(tx + 0.15f, ty + 0.15f, s * 0.45f, h + cam.tw * 0.35f, woodL, woodR, null, inset = 0f)
+        drawPyramidRoof(tx + 0.15f, ty + 0.15f, s * 0.45f, h + cam.tw * 0.35f, cam.tw * 0.25f, Color(0xFF9A4530), Color(0xFF73321F), inset = -0.03f)
+        // Fish crate
+        drawBox(tx + s * 0.62f, ty + s * 0.55f, 0.32f, h + cam.tw * 0.1f, Color(0xFF9A7A4A), Color(0xFF7A5A30), Color(0xFFBFE0F0), inset = 0f)
+        flagOn(b, h + cam.tw * 0.6f, time)
     }
 
     private fun DrawScope.flagOn(b: Building, h: Float, time: Float) {
@@ -731,8 +753,34 @@ class GameRenderer(private val c: GameController) {
         when (un.type.category) {
             Category.CAVALRY -> drawRider(un, x, y, u, dir, player, walk, swing)
             Category.SIEGE -> drawRam(x, y, u, dir, player, walk)
+            Category.SHIP -> drawBoat(un, x, y, u, dir, player, time)
             else -> drawFootman(un, x, y, u, dir, player, walk, swing)
         }
+    }
+
+    private fun DrawScope.drawBoat(un: GameUnit, x: Float, y0: Float, u: Float, dir: Float, player: Color, time: Float) {
+        val bob = sin(time * 2.2f + un.id) * 1.2f * u
+        val y = y0 + bob
+        // Wake when sailing
+        if (un.moving) {
+            drawOval(Color(0x55FFFFFF), Offset(x - dir * 20 * u - 8 * u, y0 - 3 * u), Size(16 * u, 6 * u), style = Stroke(1.5f * u))
+        }
+        drawOval(Color(0x44102030), Offset(x - 16 * u, y0 - 4 * u), Size(32 * u, 9 * u))
+        // Hull
+        val hull = Color(0xFF7A5230)
+        poly(hull, x - 16 * u * dir, y - 8 * u, x + 16 * u * dir, y - 8 * u, x + 11 * u * dir, y, x - 12 * u * dir, y)
+        poly(darken(hull, 0.75f), x - 16 * u * dir, y - 8 * u, x + 16 * u * dir, y - 8 * u, x + 15 * u * dir, y - 5 * u, x - 15 * u * dir, y - 5 * u)
+        drawLine(player, Offset(x - 14 * u * dir, y - 4 * u), Offset(x + 13 * u * dir, y - 4 * u), strokeWidth = 2 * u)
+        // Mast and sail
+        drawLine(Color(0xFF4A3420), Offset(x, y - 8 * u), Offset(x, y - 36 * u), strokeWidth = 2 * u)
+        poly(Color(0xFFF2EAD8), x + 1 * u * dir, y - 35 * u, x + 1 * u * dir, y - 12 * u, x + 14 * u * dir, y - 13 * u)
+        poly(player, x, y - 36 * u, x - 7 * u * dir, y - 33 * u, x, y - 30 * u)
+        // Net in the water while fishing, fish on board when loaded.
+        if (un.task == Task.GATHER && !un.moving) {
+            val sx = x - 14 * u * dir
+            drawLine(Color(0xAAE8E0C8), Offset(sx, y - 7 * u), Offset(sx - 6 * u * dir, y + 4 * u + sin(un.animTime * 3f) * 2 * u), strokeWidth = 1.2f * u)
+        }
+        if (un.carryAmount > 0f) drawOval(Color(0xFFBFE0F0), Offset(x + 3 * u * dir - 4 * u, y - 11 * u), Size(8 * u, 3.5f * u))
     }
 
     private fun DrawScope.drawFootman(un: GameUnit, x: Float, y: Float, u: Float, dir: Float, player: Color, walk: Float, swing: Float) {

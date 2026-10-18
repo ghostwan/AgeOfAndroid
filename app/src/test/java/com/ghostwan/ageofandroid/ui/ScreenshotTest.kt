@@ -14,6 +14,9 @@ import androidx.compose.ui.test.getBoundsInRoot
 import com.ghostwan.ageofandroid.game.SaveGame
 import com.ghostwan.ageofandroid.game.GameConfig
 import com.ghostwan.ageofandroid.game.MapType
+import com.ghostwan.ageofandroid.game.BuildingType
+import com.ghostwan.ageofandroid.game.UnitType
+import com.ghostwan.ageofandroid.game.dist
 import com.ghostwan.ageofandroid.game.Terrain
 import com.ghostwan.ageofandroid.game.World
 import org.junit.Assert.assertEquals
@@ -59,6 +62,36 @@ class ScreenshotTest {
 
     @Test
     fun mapLakes() = mapType(MapType.LAKES, Terrain.WATER)
+
+    @Test
+    fun dockAndBoats() {
+        compose.mainClock.autoAdvance = false
+        val world = World(GameConfig(opponents = 1, mapSize = 72, seed = 3L, mapType = MapType.LAKES))
+        world.revealAll = true
+        world.updateFog()
+        val me = world.players[0]
+        val (dx, dy) = (0 until 72 * 72).map { it % 72 to it / 72 }
+            .filter { (x, y) -> world.canPlaceFor(0, BuildingType.DOCK, x, y) }
+            .minBy { (x, y) -> kotlin.math.hypot((x - me.startX).toDouble(), (y - me.startY).toDouble()) }
+        val dock = world.addBuilding(0, BuildingType.DOCK, dx, dy, complete = true)
+        repeat(2) { world.train(dock, UnitType.FISHING_BOAT) }
+        world.human.res.add(com.ghostwan.ageofandroid.game.ResourceType.WOOD, 200f)
+        world.forceAdvance(65f)
+        world.units.filter { it.type == UnitType.FISHING_BOAT }.forEach { boat ->
+            world.nodes.filter { it.kind == com.ghostwan.ageofandroid.game.NodeKind.FISH }.minByOrNull { dist(it.x, it.y, boat.x, boat.y) }
+                ?.let { world.commandSmart(listOf(boat), it.x, it.y, it) }
+        }
+        world.forceAdvance(12f)
+        val controller = GameController(world, 2f)
+        compose.setContent { GameScreen(controller, onQuit = {}) }
+        repeat(5) { compose.mainClock.advanceTimeBy(100) }
+        val view = compose.activity.window.decorView
+        controller.camera.zoomAt(1.2f, view.width / 2f, view.height / 2f)
+        controller.camera.centerOn(dock.x, dock.y, view.width.toFloat(), view.height.toFloat() * 0.6f)
+        controller.select(listOf(dock))
+        repeat(5) { compose.mainClock.advanceTimeBy(100) }
+        capture("dock_boats")
+    }
 
     private fun mapType(type: MapType, terrain: Terrain) {
         run {

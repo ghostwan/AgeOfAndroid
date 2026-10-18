@@ -589,7 +589,7 @@ private fun UnitActions(c: GameController, units: List<GameUnit>) {
     }
 }
 
-private val ECONOMY = listOf(BuildingType.HOUSE, BuildingType.FARM, BuildingType.MILL, BuildingType.LUMBER_CAMP, BuildingType.MINING_CAMP)
+private val ECONOMY = listOf(BuildingType.HOUSE, BuildingType.FARM, BuildingType.MILL, BuildingType.LUMBER_CAMP, BuildingType.MINING_CAMP, BuildingType.DOCK)
 private val MILITARY = listOf(
     BuildingType.BARRACKS, BuildingType.ARCHERY_RANGE, BuildingType.STABLE, BuildingType.BLACKSMITH,
     BuildingType.WATCH_TOWER, BuildingType.SIEGE_WORKSHOP, BuildingType.WONDER,
@@ -922,6 +922,7 @@ const val HELP_TEXT = """Objectif : détruisez tous les bâtiments et unités en
 • 💤👷 : villageois inactif suivant. ⚔️ : toute l'armée. 🏛️ : forum.
 • Les villageois déposent les ressources au forum ou au camp le plus proche : construisez des camps près des forêts et des mines !
 • 🐟 Villageois + toucher des poissons proches de la rive : pêche à la main (nourriture déposée au moulin ou au forum).
+• ⚓ Port (construit dans l'eau contre la rive) : produit des bateaux de pêche ⛵ qui pêchent partout sur le lac, plus vite, et déchargent au port.
 • Cartes : Arabie (ouverte), Hautes terres (montagnes infranchissables), Canyons (ravins à traverser par quelques passages), Grands lacs (pêche).
 • Construisez des maisons pour augmenter la population, et passez les âges au forum pour débloquer de nouvelles unités."""
 

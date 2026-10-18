@@ -16,6 +16,14 @@ class Release(val version: String, val date: String, val changes: List<String>)
 /** Newest first. Add an entry with every version bump. */
 val CHANGELOG = listOf(
     Release(
+        "0.5.1", "18/10/2026",
+        listOf(
+            "Port ⚓ : se construit dans l'eau contre la rive, dès l'Âge sombre",
+            "Bateaux de pêche ⛵ : pêchent même loin de la rive, plus vite qu'un villageois, et déchargent 15 de nourriture au port",
+            "Les navires ne naviguent que sur l'eau ; seuls les archers et les tours peuvent les atteindre",
+        ),
+    ),
+    Release(
         "0.5.0", "18/10/2026",
         listOf(
             "Nouveaux types de carte : Hautes terres (montagnes infranchissables et cols), Canyons (ravins à traverser par quelques passages) et Grands lacs",

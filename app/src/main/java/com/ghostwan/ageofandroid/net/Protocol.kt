@@ -49,7 +49,7 @@ object Msg {
 }
 
 /** Bump when messages or anything they encode (enums, snapshot layout) change. */
-const val PROTOCOL_VERSION = 2
+const val PROTOCOL_VERSION = 3
 
 const val DEFAULT_PORT = 47820
 const val MAX_SEATS = 4
